@@ -1,0 +1,3 @@
+# If you're not using environment variables (e.g. during development)
+# then copy this file to .env in the project root and edit it with your values
+
