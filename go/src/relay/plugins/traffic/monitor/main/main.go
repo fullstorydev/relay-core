@@ -1,10 +1,18 @@
 package main
 
-type monitorPlugin struct {
+import (
+	"net/http"
+)
+
+type monitorPlugin struct{}
+
+func (plug monitorPlugin) Name() string {
+	return "Monitor"
 }
 
-func (mp monitorPlugin) Name() string {
-	return "Montor"
+func (plug monitorPlugin) HandleRequest(response http.ResponseWriter, request *http.Request) bool {
+	// TODO actually monitor here
+	return false
 }
 
 var Plugin monitorPlugin

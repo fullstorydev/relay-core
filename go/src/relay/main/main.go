@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"relay"
 	"relay/plugins"
 )
 
@@ -22,6 +23,9 @@ func main() {
 	for _, tp := range plugs.Traffic {
 		logger.Println("\tTraffic:", tp.Name())
 	}
+
+	relayService := relay.NewService(plugs)
+	relayService.Serve(8080) // TODO set this via config/env
 }
 
 /*

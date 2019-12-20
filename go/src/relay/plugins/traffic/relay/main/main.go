@@ -1,25 +1,26 @@
-package traffic
+package main
 
 import (
-	"log"
 	"net/http"
-	"os"
 )
 
-var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
+type relayPlugin struct{}
 
-/*
-	Multiple TrafficPlugin instances handle HTTP requests for relay.Service
-*/
-type TrafficPlugin interface {
-	Name() string
-
-	/*
-		HandleRequest is called first with an incoming traffic HTTP request
-		returns true iff the response has been fully serviced
-	*/
-	HandleRequest(response http.ResponseWriter, request *http.Request) bool
+func (plug relayPlugin) Name() string {
+	return "Relay"
 }
+
+func (plug relayPlugin) HandleRequest(response http.ResponseWriter, request *http.Request) bool {
+	if request.URL.Path == "/favicon.ico" {
+		return false
+	}
+	// TODO actually relay here
+	response.Header().Add("Content-Type", "text/html")
+	response.Write([]byte("<html><body>Unhandled Relay</body></html>"))
+	return true
+}
+
+var Plugin relayPlugin
 
 /*
 Copyright 2019 FullStory, Inc.

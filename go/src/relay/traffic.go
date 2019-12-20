@@ -1,24 +1,34 @@
-package traffic
+package relay
 
 import (
-	"log"
 	"net/http"
-	"os"
+
+	"relay/plugins"
 )
 
-var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
-
 /*
-	Multiple TrafficPlugin instances handle HTTP requests for relay.Service
+TrafficService services HTTP requests by calling through to traffic plugins
 */
-type TrafficPlugin interface {
-	Name() string
+type TrafficService struct {
+	plugins *plugins.Plugins
+}
 
-	/*
-		HandleRequest is called first with an incoming traffic HTTP request
-		returns true iff the response has been fully serviced
-	*/
-	HandleRequest(response http.ResponseWriter, request *http.Request) bool
+func NewTrafficService(plugs *plugins.Plugins) *TrafficService {
+	return &TrafficService{
+		plugins: plugs,
+	}
+}
+
+func (service *TrafficService) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	serviced := false
+	for _, trafficPlugin := range service.plugins.Traffic {
+		if trafficPlugin.HandleRequest(response, request) {
+			serviced = true
+		}
+	}
+	if serviced == false {
+		http.NotFound(response, request)
+	}
 }
 
 /*

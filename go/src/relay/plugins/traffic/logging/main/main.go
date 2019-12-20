@@ -1,10 +1,22 @@
 package main
 
-type loggingPlugin struct {
+import (
+	"log"
+	"net/http"
+	"os"
+)
+
+var logger = log.New(os.Stdout, "[traffic-logging] ", 0)
+
+type loggingPlugin struct{}
+
+func (plug loggingPlugin) Name() string {
+	return "Logging"
 }
 
-func (lp loggingPlugin) Name() string {
-	return "Logging"
+func (plug loggingPlugin) HandleRequest(response http.ResponseWriter, request *http.Request) bool {
+	logger.Printf("%s %s %s", request.Method, request.Host, request.URL)
+	return false
 }
 
 var Plugin loggingPlugin
