@@ -22,7 +22,7 @@ func NewTrafficService(plugs *plugins.Plugins) *TrafficService {
 func (service *TrafficService) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	serviced := false
 	for _, trafficPlugin := range service.plugins.Traffic {
-		if trafficPlugin.HandleRequest(response, request) {
+		if trafficPlugin.HandleRequest(response, request, serviced) {
 			serviced = true
 		}
 	}

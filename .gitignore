@@ -1,5 +1,6 @@
 # go
 /go/pkg
+/go/src/golang.org/
 
 # runtime
 /dist

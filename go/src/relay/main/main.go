@@ -1,22 +1,56 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"relay"
+	"relay/commands"
 	"relay/plugins"
 )
 
 var logger = log.New(os.Stdout, "[relay] ", 0)
 
+// These are the env variables in play
+var RelayPortVar = "RELAY_PORT"
+var RelayPluginsPathVar = "RELAY_PLUGINS_PATH"
+
+// This defines whether config variables are required
+var EnvVars = []commands.EnvVar{
+	{RelayPortVar, true, ""},
+	{RelayPluginsPathVar, false, "./plugins"},
+}
+
+// These config variables, if set, must be paths to valid directories
+var DirExistenceVars = []string{
+	RelayPluginsPathVar,
+}
+
 func main() {
-	logger.Println("Starting...")
+	if commands.SetupEnvironment(EnvVars, DirExistenceVars) != nil {
+		commands.PrintEnvUsage(EnvVars)
+		os.Exit(1)
+	}
+	relayPort, err := strconv.ParseInt(os.Getenv(RelayPortVar), 10, 64)
+	if err != nil {
+		logger.Printf("Error parsing relay port: \"%v\"", os.Getenv(RelayPortVar))
+		os.Exit(1)
+	}
+
+	pluginsPath := os.Getenv(RelayPluginsPathVar)
 
 	plugs := plugins.New()
-	err := plugs.Load("./plugins")
+	err = plugs.Load(pluginsPath)
 	if err != nil {
-		logger.Println("Error loading plugins", err)
+		logger.Println(fmt.Sprintf("Error loading plugins:\n\t%v", err))
+		os.Exit(1)
+	}
+	err = plugs.SetupEnvironment()
+	if err != nil {
+		logger.Println(err)
+		plugs.PrintEnvUsage()
 		os.Exit(1)
 	}
 	logger.Println("Plugins:")
@@ -25,7 +59,8 @@ func main() {
 	}
 
 	relayService := relay.NewService(plugs)
-	relayService.Serve(8080) // TODO set this via config/env
+	logger.Println("Relay starting on port", relayPort)
+	relayService.Serve(relayPort)
 }
 
 /*

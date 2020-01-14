@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"plugin"
 
+	"relay/commands"
 	"relay/plugins/traffic"
 )
 
@@ -22,18 +23,6 @@ type Plugins struct {
 
 func New() *Plugins {
 	return &Plugins{}
-}
-
-func readSharedObjectNames(dirPath string) ([]string, error) {
-	pathInfo, err := os.Stat(dirPath)
-	results := []string{}
-	if err != nil {
-		return results, err
-	}
-	if pathInfo.IsDir() == false {
-		return results, errors.New(fmt.Sprintf("Path is not a directory %v", dirPath))
-	}
-	return filepath.Glob(path.Join(dirPath, "*.so"))
 }
 
 func (plugins *Plugins) Load(dirPath string) error {
@@ -54,6 +43,33 @@ func (plugins *Plugins) Load(dirPath string) error {
 	return nil
 }
 
+func (plugins *Plugins) TrafficEnvVars() []commands.EnvVar {
+	vars := []commands.EnvVar{}
+	for _, trafficPlugin := range plugins.Traffic {
+		for name, required := range trafficPlugin.ConfigVars() {
+			vars = append(vars, commands.EnvVar{name, required, ""})
+		}
+	}
+	return vars
+}
+
+func (plugins *Plugins) SetupEnvironment() error {
+	err := commands.SetupEnvironment(plugins.TrafficEnvVars(), []string{})
+	if err != nil {
+		return err
+	}
+	for _, trafficPlugin := range plugins.Traffic {
+		if trafficPlugin.Config() == false {
+			return errors.New(fmt.Sprintf("Traffic plugin \"%v\" configuration error.", trafficPlugin.Name()))
+		}
+	}
+	return nil
+}
+
+func (plugins *Plugins) PrintEnvUsage() {
+	commands.PrintEnvUsage(plugins.TrafficEnvVars())
+}
+
 func (plugins *Plugins) LoadTrafficPlugin(pluginPath string) error {
 	plug, err := plugin.Open(pluginPath)
 	if err != nil {
@@ -67,11 +83,23 @@ func (plugins *Plugins) LoadTrafficPlugin(pluginPath string) error {
 	var trafficPlugin traffic.TrafficPlugin
 	trafficPlugin, ok := symTrafficPlugin.(traffic.TrafficPlugin)
 	if !ok {
-		return errors.New("Loaded plugin symbol does not implement the TrafficPlugin interface")
+		return errors.New(fmt.Sprintf("Plugin does not implement the TrafficPlugin interface:\n\t%v", pluginPath))
 	}
 
 	plugins.Traffic = append(plugins.Traffic, trafficPlugin)
 	return nil
+}
+
+func readSharedObjectNames(dirPath string) ([]string, error) {
+	pathInfo, err := os.Stat(dirPath)
+	results := []string{}
+	if err != nil {
+		return results, err
+	}
+	if pathInfo.IsDir() == false {
+		return results, errors.New(fmt.Sprintf("Path is not a directory %v", dirPath))
+	}
+	return filepath.Glob(path.Join(dirPath, "*.so"))
 }
 
 /*

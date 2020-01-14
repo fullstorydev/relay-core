@@ -1,29 +1,35 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
+
+	"golang.org/x/net/websocket"
 )
 
-type monitorPlugin struct{}
+var logger = log.New(os.Stdout, "[catcher] ", 0)
+var WebSocketPort int64 = 12346
 
-func (plug monitorPlugin) Name() string {
-	return "Monitor"
+func main() {
+	http.Handle("/echo", websocket.Handler(EchoServer))
+	http.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
+		response.WriteHeader(http.StatusOK)
+		response.Write([]byte("Catcher is live"))
+	})
+	logger.Println("Catcher listening on port", WebSocketPort)
+	err := http.ListenAndServe(fmt.Sprintf("0.0.0.0:%v", WebSocketPort), nil)
+	if err != nil {
+		panic("ListenAndServe: " + err.Error())
+	}
 }
 
-func (plug monitorPlugin) HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool {
-	// TODO actually monitor here
-	return false
+// Echo the data received on the WebSocket.
+func EchoServer(ws *websocket.Conn) {
+	io.Copy(ws, ws)
 }
-
-func (plug monitorPlugin) ConfigVars() map[string]bool {
-	return map[string]bool{}
-}
-
-func (plug *monitorPlugin) Config() bool {
-	return true
-}
-
-var Plugin monitorPlugin
 
 /*
 Copyright 2019 FullStory, Inc.

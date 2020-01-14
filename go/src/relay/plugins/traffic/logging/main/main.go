@@ -14,9 +14,22 @@ func (plug loggingPlugin) Name() string {
 	return "Logging"
 }
 
-func (plug loggingPlugin) HandleRequest(response http.ResponseWriter, request *http.Request) bool {
-	logger.Printf("%s %s %s", request.Method, request.Host, request.URL)
+func (plug loggingPlugin) HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool {
+	servicedMessage := "serviced"
+	if serviced == false {
+		servicedMessage = "not serviced"
+	}
+
+	logger.Printf("%s %s %s: %s", request.Method, request.Host, request.URL, servicedMessage)
 	return false
+}
+
+func (plug loggingPlugin) ConfigVars() map[string]bool {
+	return map[string]bool{}
+}
+
+func (plug *loggingPlugin) Config() bool {
+	return true
 }
 
 var Plugin loggingPlugin

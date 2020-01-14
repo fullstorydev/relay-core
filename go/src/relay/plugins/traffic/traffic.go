@@ -15,10 +15,14 @@ type TrafficPlugin interface {
 	Name() string
 
 	/*
-		HandleRequest is called first with an incoming traffic HTTP request
+		HandleRequest is with an incoming traffic HTTP request
+		`serviced` is true if a previously called TrafficPlugin has responded to the request
 		returns true iff the response has been fully serviced
 	*/
-	HandleRequest(response http.ResponseWriter, request *http.Request) bool
+	HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool
+
+	ConfigVars() map[string]bool
+	Config() bool
 }
 
 /*

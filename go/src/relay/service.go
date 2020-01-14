@@ -31,6 +31,8 @@ func NewService(plugs *plugins.Plugins) *Service {
 	trafficService := NewTrafficService(plugs)
 	mux.Handle("/", trafficService)
 
+	// TODO add a control/monitoring service
+
 	return &Service{
 		trafficService: trafficService,
 		mux:            mux,
