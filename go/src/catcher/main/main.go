@@ -15,6 +15,10 @@ var WebSocketPort int64 = 12346
 
 func main() {
 	http.Handle("/echo", websocket.Handler(EchoServer))
+	http.HandleFunc("/favicon.ico", func(response http.ResponseWriter, request *http.Request) {
+		response.WriteHeader(http.StatusNotFound)
+		response.Write([]byte("No favicon"))
+	})
 	http.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
 		response.WriteHeader(http.StatusOK)
 		response.Write([]byte("Catcher is live"))

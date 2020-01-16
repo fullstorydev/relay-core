@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -27,9 +28,10 @@ var (
 )
 
 type relayPlugin struct {
-	transport    *http.Transport
-	targetScheme string // http|https
-	targetHost   string // e.g. 192.168.0.1:1234
+	transport      *http.Transport
+	targetScheme   string          // http|https
+	targetHost     string          // e.g. 192.168.0.1:1234
+	relayedCookies map[string]bool // the name of cookies that should be relayed
 }
 
 func New() relayPlugin {
@@ -42,6 +44,7 @@ func New() relayPlugin {
 		transport,
 		"",
 		"",
+		map[string]bool{},
 	}
 }
 
@@ -54,7 +57,7 @@ func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, client
 		return false
 	}
 	if plug.targetScheme == "" || plug.targetHost == "" {
-		//return false
+		return false
 	}
 	if clientRequest.Header.Get("Upgrade") == "websocket" {
 		return plug.handleUpgrade(clientResponse, clientRequest)
@@ -71,7 +74,6 @@ func (plug relayPlugin) ConfigVars() map[string]bool {
 }
 
 func (plug *relayPlugin) Config() bool {
-	//cookiesVar := os.Getenv(trafficRelayCookiesVar)
 	targetVar := os.Getenv(trafficRelayTargetVar)
 	targetURL, err := url.Parse(targetVar)
 	if err != nil {
@@ -80,10 +82,18 @@ func (plug *relayPlugin) Config() bool {
 	}
 	plug.targetScheme = targetURL.Scheme
 	plug.targetHost = targetURL.Host
+
+	cookiesVar := os.Getenv(trafficRelayCookiesVar)
+	if len(cookiesVar) > 0 {
+		for _, cookieName := range strings.Split(cookiesVar, " ") { // Should we support spaces?
+			plug.relayedCookies[cookieName] = true
+		}
+	}
+
 	return true
 }
 
-func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
+func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 	clientRequest.URL.Scheme = plug.targetScheme
 	clientRequest.URL.Host = plug.targetHost
 	clientRequest.Host = plug.targetHost
@@ -91,11 +101,30 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 		"Origin",
 		fmt.Sprintf("%v://%v/", plug.targetScheme, plug.targetHost),
 	)
-	clientRequest.Header.Del("Cookie") // TODO Handle cookie env var whitelist
+	if len(plug.relayedCookies) == 0 {
+		clientRequest.Header.Del("Cookie")
+	} else {
+		var cookieString strings.Builder
+		first := true
+		for _, cookie := range clientRequest.Cookies() {
+			if _, ok := plug.relayedCookies[cookie.Name]; ok == false {
+				continue
+			}
+			if first == false {
+				cookieString.WriteString("&")
+			}
+			cookieString.WriteString(cookie.String())
+			first = false
+		}
+		clientRequest.Header.Set("Cookie", cookieString.String())
+	}
+}
 
+func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
+	plug.prepRelayRequest(clientRequest)
 	if !clientRequest.URL.IsAbs() {
 		logger.Println("Url was not abs", clientRequest.URL.Host)
-		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to non-relay requests: %v", clientRequest.URL), 500)
+		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
 		return true
 	}
 
@@ -141,16 +170,12 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 }
 
 func (plug *relayPlugin) handleUpgrade(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
-	clientRequest.URL.Scheme = plug.targetScheme
-	clientRequest.URL.Host = plug.targetHost
-	clientRequest.Host = plug.targetHost
-	clientRequest.Header.Set(
-		"Origin",
-		fmt.Sprintf("%v://%v/", plug.targetScheme, plug.targetHost),
-	)
-	clientRequest.Header.Del("Cookie") // TODO Handle cookie env var whitelist
-	// TODO clean up any other host-specific headers
-
+	plug.prepRelayRequest(clientRequest)
+	if !clientRequest.URL.IsAbs() {
+		logger.Println("Url was not absolute", clientRequest.URL.Host)
+		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
+		return true
+	}
 	logger.Println("Upgrading to websocket:", clientRequest.URL)
 
 	// Connect to the target WS service
