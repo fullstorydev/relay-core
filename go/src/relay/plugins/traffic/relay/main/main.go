@@ -187,14 +187,14 @@ func (plug *relayPlugin) handleUpgrade(clientResponse http.ResponseWriter, clien
 		})
 		if err != nil {
 			logger.Println("Error setting up target tls websocket", err)
-			http.Error(clientResponse, fmt.Sprintf("Could not dial connect %v", clientRequest.URL.Host, err), 404)
+			http.Error(clientResponse, fmt.Sprintf("Could not dial connect %v: %v", clientRequest.URL.Host, err), 404)
 			return true
 		}
 	} else {
 		targetConn, err = net.Dial("tcp", clientRequest.URL.Host)
 		if err != nil {
 			logger.Println("Error setting up target websocket", err)
-			http.Error(clientResponse, fmt.Sprintf("Could not dial connect %v", clientRequest.URL.Host, err), 404)
+			http.Error(clientResponse, fmt.Sprintf("Could not dial connect %v: %v", clientRequest.URL.Host, err), 404)
 			return true
 		}
 	}

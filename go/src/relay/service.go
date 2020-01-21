@@ -2,6 +2,8 @@ package relay
 
 import (
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 
 	"relay/plugins"
@@ -40,9 +42,24 @@ func NewService(plugs *plugins.Plugins) *Service {
 	}
 }
 
-/*
-Starts and blocks on HTTP service
-*/
-func (service *Service) Serve(port int64) {
-	http.ListenAndServe(fmt.Sprintf(":%d", port), service.mux)
+func (service *Service) Start(port int) (io.Closer, int, error) {
+	address := fmt.Sprintf("0.0.0.0:%v", port)
+	server := &http.Server{
+		Addr:    address,
+		Handler: service.mux,
+	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	go func() {
+		server.Serve(
+			TcpKeepAliveListener{
+				listener.(*net.TCPListener),
+			},
+		)
+	}()
+
+	return listener, listener.Addr().(*net.TCPAddr).Port, nil
 }

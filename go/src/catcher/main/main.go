@@ -1,38 +1,23 @@
 package main
 
 import (
-	"fmt"
-	"io"
+	"catcher"
 	"log"
-	"net/http"
 	"os"
-
-	"golang.org/x/net/websocket"
+	"time"
 )
 
 var logger = log.New(os.Stdout, "[catcher] ", 0)
-var WebSocketPort int64 = 12346
 
 func main() {
-	http.Handle("/echo", websocket.Handler(EchoServer))
-	http.HandleFunc("/favicon.ico", func(response http.ResponseWriter, request *http.Request) {
-		response.WriteHeader(http.StatusNotFound)
-		response.Write([]byte("No favicon"))
-	})
-	http.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
-		response.WriteHeader(http.StatusOK)
-		response.Write([]byte("Catcher is live"))
-	})
-	logger.Println("Catcher listening on port", WebSocketPort)
-	err := http.ListenAndServe(fmt.Sprintf("0.0.0.0:%v", WebSocketPort), nil)
+	_, port, err := catcher.Start(catcher.ServicePort)
 	if err != nil {
-		panic("ListenAndServe: " + err.Error())
+		panic("Could not start catcher service: " + err.Error())
 	}
-}
-
-// Echo the data received on the WebSocket.
-func EchoServer(ws *websocket.Conn) {
-	io.Copy(ws, ws)
+	logger.Println("Catcher listening on port", port)
+	for {
+		time.Sleep(100 * time.Minute)
+	}
 }
 
 /*

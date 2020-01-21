@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"relay"
 	"relay/commands"
@@ -33,11 +34,12 @@ func main() {
 		commands.PrintEnvUsage(EnvVars)
 		os.Exit(1)
 	}
-	relayPort, err := strconv.ParseInt(os.Getenv(RelayPortVar), 10, 64)
+	parsedPort, err := strconv.ParseInt(os.Getenv(RelayPortVar), 10, 32)
 	if err != nil {
 		logger.Printf("Error parsing relay port: \"%v\"", os.Getenv(RelayPortVar))
 		os.Exit(1)
 	}
+	relayPort := int(parsedPort)
 
 	pluginsPath := os.Getenv(RelayPluginsPathVar)
 
@@ -59,8 +61,14 @@ func main() {
 	}
 
 	relayService := relay.NewService(plugs)
-	logger.Println("Relay starting on port", relayPort)
-	relayService.Serve(relayPort)
+	_, port, err := relayService.Start(relayPort)
+	if err != nil {
+		panic("Could not start catcher service: " + err.Error())
+	}
+	logger.Println("Relay listening on port", port)
+	for {
+		time.Sleep(100 * time.Minute)
+	}
 }
 
 /*
