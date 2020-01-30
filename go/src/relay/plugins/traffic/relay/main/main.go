@@ -36,7 +36,7 @@ type relayPlugin struct {
 
 func New() relayPlugin {
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{},
 		Proxy:           http.ProxyFromEnvironment,
 		IdleConnTimeout: 2 * time.Second, // TODO set from configs
 	}
@@ -153,7 +153,7 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 		}
 	} else if targetResponse.ContentLength < 0 {
 		// The server didn't supply a content length so we calculate one
-		body, err := ioutil.ReadAll(bodyReader)
+		body, err := ioutil.ReadAll(bodyReader) // TODO set a read limit
 		if err != nil {
 			logger.Printf("Cannot read a body: %v", err)
 			return true
@@ -182,9 +182,7 @@ func (plug *relayPlugin) handleUpgrade(clientResponse http.ResponseWriter, clien
 	var targetConn net.Conn
 	var err error
 	if clientRequest.URL.Scheme == "https" {
-		targetConn, err = tls.Dial("tcp", clientRequest.URL.Host, &tls.Config{
-			InsecureSkipVerify: true, // TODO check for cert validity
-		})
+		targetConn, err = tls.Dial("tcp", clientRequest.URL.Host, &tls.Config{})
 		if err != nil {
 			logger.Println("Error setting up target tls websocket", err)
 			http.Error(clientResponse, fmt.Sprintf("Could not dial connect %v: %v", clientRequest.URL.Host, err), 404)
