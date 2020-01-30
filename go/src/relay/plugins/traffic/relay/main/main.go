@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -17,14 +16,17 @@ import (
 	"time"
 )
 
+const DefaultMaxBodySize int64 = 1024 * 2048 // 2MB
+
 var (
 	// This is what the relay will load to handle traffic plugin duties
 	Plugin relayPlugin = New()
 
-	hasPort                = regexp.MustCompile(`:\d+$`)
-	logger                 = log.New(os.Stdout, "[traffic-relay] ", 0)
-	trafficRelayTargetVar  = "TRAFFIC_RELAY_TARGET"
-	trafficRelayCookiesVar = "TRAFFIC_RELAY_COOKIES"
+	hasPort                 = regexp.MustCompile(`:\d+$`)
+	logger                  = log.New(os.Stdout, "[traffic-relay] ", 0)
+	trafficRelayTargetVar   = "TRAFFIC_RELAY_TARGET"
+	trafficRelayCookiesVar  = "TRAFFIC_RELAY_COOKIES"
+	trafficRelayMaxBodySize = "TRAFFIC_RELAY_MAX_BODY_SIZE"
 )
 
 type relayPlugin struct {
@@ -32,6 +34,7 @@ type relayPlugin struct {
 	targetScheme   string          // http|https
 	targetHost     string          // e.g. 192.168.0.1:1234
 	relayedCookies map[string]bool // the name of cookies that should be relayed
+	maxBodySize    int64
 }
 
 func New() relayPlugin {
@@ -45,6 +48,7 @@ func New() relayPlugin {
 		"",
 		"",
 		map[string]bool{},
+		DefaultMaxBodySize,
 	}
 }
 
@@ -68,8 +72,9 @@ func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, client
 
 func (plug relayPlugin) ConfigVars() map[string]bool {
 	return map[string]bool{
-		trafficRelayTargetVar:  true,
-		trafficRelayCookiesVar: false,
+		trafficRelayTargetVar:   true,
+		trafficRelayCookiesVar:  false,
+		trafficRelayMaxBodySize: false,
 	}
 }
 
@@ -90,6 +95,15 @@ func (plug *relayPlugin) Config() bool {
 		}
 	}
 
+	maxBodySizeVar := os.Getenv(trafficRelayMaxBodySize)
+	if len(maxBodySizeVar) > 0 {
+		maxBodySize, err := strconv.ParseInt(maxBodySizeVar, 10, 64)
+		if err != nil {
+			logger.Println("Error parsing TRAFFIC_RELAY_MAX_BODY_SIZE environment variable", err)
+			return false
+		}
+		plug.maxBodySize = maxBodySize
+	}
 	return true
 }
 
@@ -97,7 +111,7 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 	clientRequest.URL.Scheme = plug.targetScheme
 	clientRequest.URL.Host = plug.targetHost
 	clientRequest.Host = plug.targetHost
-	clientRequest.Header.Set(
+	clientRequest.Header.Set( // TODO what should this be?
 		"Origin",
 		fmt.Sprintf("%v://%v/", plug.targetScheme, plug.targetHost),
 	)
@@ -135,10 +149,6 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 	}
 	defer targetResponse.Body.Close()
 
-	var bodyReader io.Reader = targetResponse.Body
-
-	// TODO clean up host-specific headers like cookies
-
 	// Set the relayed headers
 	for key, values := range targetResponse.Header {
 		for _, value := range values {
@@ -146,22 +156,18 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 		}
 	}
 
-	if targetResponse.ContentLength > 0 {
+	if targetResponse.ContentLength > plug.maxBodySize {
+		clientResponse.WriteHeader(http.StatusServiceUnavailable)
+		clientResponse.Write([]byte("Response body content-length was too large"))
+	} else if targetResponse.ContentLength > 0 {
 		clientResponse.WriteHeader(targetResponse.StatusCode)
-		if _, err := io.CopyN(clientResponse, bodyReader, targetResponse.ContentLength); err != nil {
-			logger.Printf("Error copying to client: %s", err)
+		if _, err := io.CopyN(clientResponse, targetResponse.Body, targetResponse.ContentLength); err != nil {
+			logger.Printf("Error relaying response body to client: %s", err)
 		}
 	} else if targetResponse.ContentLength < 0 {
-		// The server didn't supply a content length so we calculate one
-		body, err := ioutil.ReadAll(bodyReader) // TODO set a read limit
-		if err != nil {
-			logger.Printf("Cannot read a body: %v", err)
-			return true
-		}
-		clientResponse.Header().Add("Content-Length", strconv.Itoa(int(len(body))))
 		clientResponse.WriteHeader(targetResponse.StatusCode)
-		if _, err := io.Copy(clientResponse, bytes.NewReader(body)); err != nil {
-			logger.Printf("Error copying to client: %s", err)
+		if _, err := io.CopyN(clientResponse, targetResponse.Body, plug.maxBodySize); err != nil {
+			logger.Printf("Error relaying response body with unknown content-length: %s", err)
 		}
 	} else {
 		clientResponse.WriteHeader(targetResponse.StatusCode)

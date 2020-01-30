@@ -12,3 +12,7 @@ TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346
 
 # Space separated cookie names that will be relayed (defaults to none)
 TRAFFIC_RELAY_COOKIES=test_cookie another_test_cookie
+
+# The maximum size (in bytes) of acceptable response bodies. (defaults to 2 MB)
+# Responses with larger bodies will return a 503 (service unavailable) status code
+# TRAFFIC_RELAY_MAX_BODY_SIZE=100000

@@ -27,12 +27,43 @@ func TestBasicRelay(t *testing.T) {
 
 	catcherURL := fmt.Sprintf("http://127.0.0.1:%v", catcherPort)
 	catcherBody := getBody(catcherURL, t)
+	if catcherBody == nil {
+		return
+	}
 
 	relayURL := fmt.Sprintf("http://127.0.0.1:%v", relayPort)
 	relayBody := getBody(relayURL, t)
+	if relayBody == nil {
+		return
+	}
 
 	if bytes.Equal(catcherBody, relayBody) == false {
 		t.Errorf("Bodies don't match: \"%v\" \"%v\"", catcherBody, relayBody)
+		return
+	}
+}
+
+func TestMaxBodySize(t *testing.T) {
+	os.Setenv("TRAFFIC_RELAY_MAX_BODY_SIZE", fmt.Sprintf("%v", 5))
+	defer os.Setenv("TRAFFIC_RELAY_MAX_BODY_SIZE", "2097152") // Unsetenv doesn't work
+	catcherCloser, _, relayCloser, relayPort, err := setupCatcherAndRelay()
+	if err != nil {
+		t.Errorf("Error starting catcher and relay: %v", err)
+		return
+	}
+	defer catcherCloser.Close()
+	defer relayCloser.Close()
+
+	relayURL := fmt.Sprintf("http://127.0.0.1:%v", relayPort)
+
+	response, err := http.Get(relayURL)
+	if err != nil {
+		t.Errorf("Error GETing: %v", err)
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 503 {
+		t.Errorf("Expected 503 response for surpassing max body size: %v", response)
 		return
 	}
 }
@@ -94,7 +125,6 @@ func setupCatcherAndRelay() (catcherCloser io.Closer, catcherPort int, relayClos
 	}
 	catcherURL := fmt.Sprintf("http://127.0.0.1:%v", catcherPort)
 	os.Setenv("TRAFFIC_RELAY_TARGET", catcherURL)
-
 	relayService, err := setupRelay()
 	if err != nil {
 		catcherCloser.Close()

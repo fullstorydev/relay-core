@@ -19,7 +19,7 @@ compile:
 prep:
 	go get golang.org/x/net/websocket
 
-test:
+test: compile
 	go test relay/...
 
 clean:
