@@ -5,6 +5,9 @@
     # - go mod tidy
     # you may remove this if you don't need go generate
     # - go generate ./...
+before:
+  hooks:
+  - make prep
 builds:
   - id: "relay"
     env:
