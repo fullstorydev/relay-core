@@ -1,0 +1,39 @@
+# Documentation: http://goreleaser.com
+#before:
+  #hooks:
+    # you may remove this if you don't use vgo
+    # - go mod tidy
+    # you may remove this if you don't need go generate
+    # - go generate ./...
+builds:
+  - id: "relay"
+    env:
+    - CGO_ENABLED=0
+    binary: "relay"
+    main: ./go/src/relay/main/main.go
+  - id: "catcher"
+    env:
+    - CGO_ENABLED=0
+    binary: "catcher"
+    main: ./go/src/catcher/main/main.go
+
+archives:
+  -
+    builds:
+    - "relay"
+    - "catcher"
+
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
+release:
+  github:
+    owner: fullstorydev
+    name: relay-core

@@ -4,8 +4,7 @@ ADD ./go/src ./go/src
 ADD ./Makefile .
 RUN apk add --update make build-base
 RUN set -ex && \
-	make prep && \
-	make compile
+	make 
 
 FROM alpine
 RUN apk add --update ca-certificates

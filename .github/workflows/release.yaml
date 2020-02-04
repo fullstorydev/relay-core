@@ -1,0 +1,66 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+      - name: Set up go
+        uses: actions/setup-go@master
+      - name: Set ENVs
+        run: |
+          echo "##[set-env name=GIT_TAG;]$(echo $GITHUB_REF | cut -d'/' -f3)"
+          echo "##[set-env name=GIT_REPO_NAME;]$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)"
+          echo "##[set-env name=GIT_REPO_ORG;]$(echo $GITHUB_REPOSITORY | cut -d'/' -f1)"
+          echo "##[set-env name=GOPATH;]$(dirname $GITHUB_WORKSPACE)/relay/go"
+          echo "##[add-path]$(dirname $GITHUB_WORKSPACE)/relay/go/bin"
+        shell: bash
+      - name: Show ENVs
+        run: |
+          echo "PATH: $PATH"
+          echo "GOPATH: $GOPATH"
+          echo "GIT_TAG: $GIT_TAG"
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "GITHUB_REPO_NAME: $GITHUB_REPO_NAME"
+          echo "GITHUB_REPO_ORG: $GITHUB_REPO_ORG"
+        shell: bash
+      - name: Build and release
+        uses: goreleaser/goreleaser-action@master
+        with:
+          version: latest
+          args: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.ReleaseToken }}
+  build-github-docker-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: Set ENVs
+        run: |
+          echo "##[set-env name=GIT_TAG;]$(echo $GITHUB_REF | cut -d'/' -f3)"
+          echo "##[set-env name=GIT_REPO_NAME;]$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)"
+          echo "##[set-env name=GIT_REPO_ORG;]$(echo $GITHUB_REPOSITORY | cut -d'/' -f1)"
+        shell: bash
+      - name: Show ENVs
+        run: |
+          echo "PATH: $PATH"
+          echo "GOPATH: $GOPATH"
+          echo "GIT_TAG: $GIT_TAG"
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "GITHUB_REPO_NAME: $GITHUB_REPO_NAME"
+          echo "GITHUB_REPO_ORG: $GITHUB_REPO_ORG"
+        shell: bash
+      - name: Publish to registry
+        uses: elgohr/Publish-Docker-Github-Action@master
+        with:
+          name: ${{ env.GIT_REPO_ORG }}/${{ env.GIT_REPO_NAME }}/${{ env.GIT_REPO_NAME }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
+          tags: "${{ env.GIT_TAG }}"
