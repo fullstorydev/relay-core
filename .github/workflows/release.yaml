@@ -27,8 +27,9 @@ jobs:
           echo "GOPATH: $GOPATH"
           echo "GIT_TAG: $GIT_TAG"
           echo "GITHUB_REF: $GITHUB_REF"
-          echo "GITHUB_REPO_NAME: $GITHUB_REPO_NAME"
           echo "GITHUB_REPO_ORG: $GITHUB_REPO_ORG"
+          echo "GITHUB_REPO_NAME: $GITHUB_REPO_NAME"
+          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
         shell: bash
       - name: Build and release
         uses: goreleaser/goreleaser-action@master
