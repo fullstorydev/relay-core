@@ -18,8 +18,8 @@ jobs:
           echo "##[set-env name=GIT_TAG;]$(echo $GITHUB_REF | cut -d'/' -f3)"
           echo "##[set-env name=GITHUB_REPO_NAME;]$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)"
           echo "##[set-env name=GITHUB_REPO_ORG;]$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f1)"
-          echo "##[set-env name=GOPATH;]$(dirname $GITHUB_WORKSPACE)/relay/go"
-          echo "##[add-path]$(dirname $GITHUB_WORKSPACE)/relay/go/bin"
+          echo "##[set-env name=GOPATH;]$(dirname $GITHUB_WORKSPACE)/relay-core/go"
+          echo "##[add-path]$(dirname $GITHUB_WORKSPACE)/relay-core/go/bin"
         shell: bash
       - name: Show ENVs
         run: |
