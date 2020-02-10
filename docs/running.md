@@ -22,7 +22,9 @@ Whether you're using a Docker container or running the binary in a shell script,
 
 For each release version of Relay there is a Docker image hosted in GitHub's Packages registry. You can see them listed on the [relay-core packages page](https://github.com/fullstorydev/relay-core/packages).
 
-Somewhat annoyingly, GitHub requires authentication in order to use even public Docker images so you'll need to authenticate the Docker CLI using these instructions. Once that's complete, you can pull the image in the usual way:
+Somewhat annoyingly, GitHub requires authentication in order to use even public Docker images so you'll need to authenticate the Docker CLI using [these instructions](https://help.github.com/en/packages/using-github-packages-with-your-projects-ecosystem/configuring-docker-for-use-with-github-packages#authenticating-to-github-packages).
+
+Once Docker is authenticated with GitHub you can pull the image in the usual way:
 
 	docker pull docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.0.1-alpha3
 
