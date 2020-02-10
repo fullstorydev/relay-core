@@ -9,9 +9,12 @@ import (
 var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 
 /*
-	Multiple TrafficPlugin instances handle HTTP requests for relay.Service
+	relay.plugins.Plugins loads traffic plugins in order to service HTTP requests
 */
 type TrafficPlugin interface {
+	/*
+		A human readable name for this plugin, like "Logging" or "Attack detector"
+	*/
 	Name() string
 
 	/*
@@ -21,7 +24,21 @@ type TrafficPlugin interface {
 	*/
 	HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool
 
+	/*
+		ConfigVars returns a map of environment variables and whether they are required by this plugin
+		For example, if the plugin expects environment variables  and MIN_LENGTH and can't work if MIN_LENGTH is set then the return value would be:
+
+			return map[string]bool{
+				"MAX_COUNT":   false,
+				"MIN_LENGTH":  true,
+			}
+
+	*/
 	ConfigVars() map[string]bool
+
+	/*
+		Config checks whether the plugin has the environment variables needed to run
+	*/
 	Config() bool
 }
 

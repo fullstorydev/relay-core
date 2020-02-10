@@ -19,7 +19,7 @@ import (
 const DefaultMaxBodySize int64 = 1024 * 2048 // 2MB
 
 var (
-	// This is what the relay will load to handle traffic plugin duties
+	// This is what relay.plugin.Plugins will load to handle traffic plugin duties
 	Plugin relayPlugin = New()
 
 	hasPort                 = regexp.MustCompile(`:\d+$`)
@@ -34,7 +34,7 @@ type relayPlugin struct {
 	targetScheme   string          // http|https
 	targetHost     string          // e.g. 192.168.0.1:1234
 	relayedCookies map[string]bool // the name of cookies that should be relayed
-	maxBodySize    int64
+	maxBodySize    int64           // maximum length in bytes of relayed bodies
 }
 
 func New() relayPlugin {
@@ -137,7 +137,6 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
 	plug.prepRelayRequest(clientRequest)
 	if !clientRequest.URL.IsAbs() {
-		logger.Println("Url was not abs", clientRequest.URL.Host)
 		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
 		return true
 	}

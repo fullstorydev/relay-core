@@ -1,18 +1,11 @@
 # Relay
 
-*This project is not ready for use in production.*
+The Relay project provides a service that relays HTTP requests (including WebSockets) to a diffect service. The most common use is to relay requests from a hostname in one domain to a service in a different domain.
 
-If you're interested, the initial work is happening in the `development` branch.
+For example, you could run an instance of Relay at `design-tool.your-domain.com` and configured it to relay requests to a third party service like `design-tool.com`.
+
+Relay gives you more control and monitoring possibilities over network traffic from your users' browsers that would normally go directly to a third party service.
+
+To get started, check out the [Running Relay](./docs/running.md) document.
 
 This project is covered by the MIT License. See [LICENSE](LICENSE) for details.
-
-
-## Docker image
-
-Create an image:
-
-	docker build -t relay:v0 .
-
-Run the relay:
-
-	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=https://www.wikipedia.org/" --publish 8990:8990 -d relay:v0
