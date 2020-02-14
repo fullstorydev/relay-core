@@ -16,3 +16,7 @@ TRAFFIC_RELAY_COOKIES=test_cookie another_test_cookie
 # The maximum size (in bytes) of acceptable response bodies. (defaults to 2 MB)
 # Responses with larger bodies will return a 503 (service unavailable) status code
 # TRAFFIC_RELAY_MAX_BODY_SIZE=100000
+
+# By default the relay plugin will send the Origin header as-is, which is usually what you want
+# If you have a special circumstance then you can set this variable to override the incoming Origin header
+# TRAFFIC_RELAY_ORIGIN_OVERRIDE=example.com

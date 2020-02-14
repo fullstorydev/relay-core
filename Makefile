@@ -25,7 +25,7 @@ cli:
 compile: plugins cli
 
 test: prep compile
-	go test relay/...
+	go test -v relay/...
 
 clean:
 	rm -rf $(DIST_PATH)/*

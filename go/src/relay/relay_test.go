@@ -43,6 +43,38 @@ func TestBasicRelay(t *testing.T) {
 	}
 }
 
+func TestOriginOverride(t *testing.T) {
+	newOrigin := "example.com"
+	os.Setenv("TRAFFIC_RELAY_ORIGIN_OVERRIDE", newOrigin)
+	defer os.Setenv("TRAFFIC_RELAY_ORIGIN_OVERRIDE", "") // Unsetenv doesn't work
+
+	catcherCloser, _, relayCloser, relayPort, err := setupCatcherAndRelay()
+	if err != nil {
+		t.Errorf("Error starting catcher and relay: %v", err)
+		return
+	}
+	defer catcherCloser.Close()
+	defer relayCloser.Close()
+
+	relayURL := fmt.Sprintf("http://127.0.0.1:%v", relayPort)
+	lastOriginURL := fmt.Sprintf("http://127.0.0.1:%v%v", relayPort, catcher.LastOriginPath)
+
+	_, err = http.Get(relayURL)
+	if err != nil {
+		t.Errorf("Error GETing: %v", err)
+		return
+	}
+
+	lastOriginBody := getBody(lastOriginURL, t)
+	if len(lastOriginBody) == 0 {
+		return
+	}
+	if bytes.Equal([]byte("http://"+newOrigin), lastOriginBody) == false {
+		t.Errorf("Origin override mismatch: \"%v\" \"%v\"", newOrigin, string(lastOriginBody))
+		return
+	}
+}
+
 func TestMaxBodySize(t *testing.T) {
 	os.Setenv("TRAFFIC_RELAY_MAX_BODY_SIZE", fmt.Sprintf("%v", 5))
 	defer os.Setenv("TRAFFIC_RELAY_MAX_BODY_SIZE", "2097152") // Unsetenv doesn't work

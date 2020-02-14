@@ -14,17 +14,25 @@ import (
 
 var logger = log.New(os.Stdout, "[catcher] ", 0)
 var ServicePort int = 12346
+var LastOriginPath = "/__catcher_last_origin"
 
 func Start(port int) (io.Closer, int, error) {
+	lastOrigin := ""
+
 	mux := http.NewServeMux()
 	mux.Handle("/echo", websocket.Handler(EchoServer))
 	mux.HandleFunc("/favicon.ico", func(response http.ResponseWriter, request *http.Request) {
 		response.WriteHeader(http.StatusNotFound)
 		response.Write([]byte("No favicon"))
 	})
+	mux.HandleFunc(LastOriginPath, func(response http.ResponseWriter, request *http.Request) {
+		response.WriteHeader(http.StatusOK)
+		response.Write([]byte(lastOrigin))
+	})
 	mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
 		response.WriteHeader(http.StatusOK)
 		response.Write([]byte("Catcher is online"))
+		lastOrigin = request.Header.Get("Origin")
 	})
 
 	address := fmt.Sprintf("0.0.0.0:%v", port)

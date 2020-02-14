@@ -22,17 +22,19 @@ var (
 	// This is what relay.plugin.Plugins will load to handle traffic plugin duties
 	Plugin relayPlugin = New()
 
-	hasPort                 = regexp.MustCompile(`:\d+$`)
-	logger                  = log.New(os.Stdout, "[traffic-relay] ", 0)
-	trafficRelayTargetVar   = "TRAFFIC_RELAY_TARGET"
-	trafficRelayCookiesVar  = "TRAFFIC_RELAY_COOKIES"
-	trafficRelayMaxBodySize = "TRAFFIC_RELAY_MAX_BODY_SIZE"
+	hasPort                       = regexp.MustCompile(`:\d+$`)
+	logger                        = log.New(os.Stdout, "[traffic-relay] ", 0)
+	trafficRelayTargetVar         = "TRAFFIC_RELAY_TARGET"
+	trafficRelayCookiesVar        = "TRAFFIC_RELAY_COOKIES"
+	trafficRelayMaxBodySizeVar    = "TRAFFIC_RELAY_MAX_BODY_SIZE"
+	trafficRelayOriginOverrideVar = "TRAFFIC_RELAY_ORIGIN_OVERRIDE"
 )
 
 type relayPlugin struct {
 	transport      *http.Transport
 	targetScheme   string          // http|https
 	targetHost     string          // e.g. 192.168.0.1:1234
+	originOverride string          // default to passing Origin header as-is, but set to override
 	relayedCookies map[string]bool // the name of cookies that should be relayed
 	maxBodySize    int64           // maximum length in bytes of relayed bodies
 }
@@ -45,6 +47,7 @@ func New() relayPlugin {
 	}
 	return relayPlugin{
 		transport,
+		"",
 		"",
 		"",
 		map[string]bool{},
@@ -72,9 +75,10 @@ func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, client
 
 func (plug relayPlugin) ConfigVars() map[string]bool {
 	return map[string]bool{
-		trafficRelayTargetVar:   true,
-		trafficRelayCookiesVar:  false,
-		trafficRelayMaxBodySize: false,
+		trafficRelayTargetVar:         true,
+		trafficRelayCookiesVar:        false,
+		trafficRelayMaxBodySizeVar:    false,
+		trafficRelayOriginOverrideVar: false,
 	}
 }
 
@@ -88,6 +92,11 @@ func (plug *relayPlugin) Config() bool {
 	plug.targetScheme = targetURL.Scheme
 	plug.targetHost = targetURL.Host
 
+	originOverrideVar := os.Getenv(trafficRelayOriginOverrideVar)
+	if len(originOverrideVar) > 0 {
+		plug.originOverride = originOverrideVar
+	}
+
 	cookiesVar := os.Getenv(trafficRelayCookiesVar)
 	if len(cookiesVar) > 0 {
 		for _, cookieName := range strings.Split(cookiesVar, " ") { // Should we support spaces?
@@ -95,7 +104,7 @@ func (plug *relayPlugin) Config() bool {
 		}
 	}
 
-	maxBodySizeVar := os.Getenv(trafficRelayMaxBodySize)
+	maxBodySizeVar := os.Getenv(trafficRelayMaxBodySizeVar)
 	if len(maxBodySizeVar) > 0 {
 		maxBodySize, err := strconv.ParseInt(maxBodySizeVar, 10, 64)
 		if err != nil {
@@ -111,10 +120,12 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 	clientRequest.URL.Scheme = plug.targetScheme
 	clientRequest.URL.Host = plug.targetHost
 	clientRequest.Host = plug.targetHost
-	clientRequest.Header.Set( // TODO what should this be?
-		"Origin",
-		fmt.Sprintf("%v://%v/", plug.targetScheme, plug.targetHost),
-	)
+	if len(plug.originOverride) > 0 {
+		clientRequest.Header.Set(
+			"Origin",
+			fmt.Sprintf("%v://%v", plug.targetScheme, plug.originOverride),
+		)
+	}
 	if len(plug.relayedCookies) == 0 {
 		clientRequest.Header.Del("Cookie")
 	} else {
