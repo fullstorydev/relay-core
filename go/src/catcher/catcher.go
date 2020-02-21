@@ -31,7 +31,7 @@ func Start(port int) (io.Closer, int, error) {
 	})
 	mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
 		response.WriteHeader(http.StatusOK)
-		response.Write([]byte("Catcher is online"))
+		response.Write([]byte(IndexHTML))
 		lastOrigin = request.Header.Get("Origin")
 	})
 
