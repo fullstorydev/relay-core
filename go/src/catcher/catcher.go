@@ -33,6 +33,7 @@ func Start(port int) (io.Closer, int, error) {
 		response.WriteHeader(http.StatusOK)
 		response.Write([]byte(IndexHTML))
 		lastOrigin = request.Header.Get("Origin")
+		logger.Println("Caught:", request.URL)
 	})
 
 	address := fmt.Sprintf("0.0.0.0:%v", port)

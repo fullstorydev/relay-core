@@ -14,8 +14,8 @@ prep:
 plugins:
 	mkdir -p $(DIST_PATH)/plugins/traffic/active
 	mkdir -p $(DIST_PATH)/plugins/traffic/inactive
-	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/010-relay.so $(GOSRC)/relay/plugins/traffic/relay/main/main.go
-	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/020-monitor.so $(GOSRC)/relay/plugins/traffic/monitor/main/main.go
+	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/010-paths.so $(GOSRC)/relay/plugins/traffic/paths/main/main.go
+	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/020-relay.so $(GOSRC)/relay/plugins/traffic/relay/main/main.go
 	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/030-logging.so $(GOSRC)/relay/plugins/traffic/logging/main/main.go
 
 cli:
