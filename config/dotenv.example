@@ -2,16 +2,20 @@
 # then copy this file to .env in the project root and edit it with your values
 
 # The port on which the relay service will listen (no default)
-RELAY_PORT=8080
+RELAY_PORT=8086
 
 # The file path to the directory containing relay plugins (defaults to ./plugins)
-RELAY_PLUGINS_PATH=./plugins
+# RELAY_PLUGINS_PATH=./plugins
 
-# The URL for the traffic relay plugin to target (no default)
+# The default URL for the traffic relay plugin to target (no default)
 TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346
 
+# Special paths that should be relayed to full URLs (defaults to none)
+# Specials can use different hosts than the TRAFFIC_RELAY_TARGET
+# TRAFFIC_RELAY_SPECIALS=^/example/(.*\.js) https://example.com/static-js/${1}
+
 # Space separated cookie names that will be relayed (defaults to none)
-TRAFFIC_RELAY_COOKIES=test_cookie another_test_cookie
+# TRAFFIC_RELAY_COOKIES=test_cookie another_test_cookie
 
 # The maximum size (in bytes) of acceptable response bodies. (defaults to 2 MB)
 # Responses with larger bodies will return a 503 (service unavailable) status code

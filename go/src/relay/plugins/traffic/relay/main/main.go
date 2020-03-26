@@ -28,12 +28,19 @@ var (
 	trafficRelayCookiesVar        = "TRAFFIC_RELAY_COOKIES"
 	trafficRelayMaxBodySizeVar    = "TRAFFIC_RELAY_MAX_BODY_SIZE"
 	trafficRelayOriginOverrideVar = "TRAFFIC_RELAY_ORIGIN_OVERRIDE"
+	trafficRelaySpecials          = "TRAFFIC_RELAY_SPECIALS"
 )
+
+type special struct {
+	match       *regexp.Regexp
+	replacement string
+}
 
 type relayPlugin struct {
 	transport      *http.Transport
 	targetScheme   string          // http|https
 	targetHost     string          // e.g. 192.168.0.1:1234
+	specials       []special       // path patterns that are mapped to fully qualified URLs
 	originOverride string          // default to passing Origin header as-is, but set to override
 	relayedCookies map[string]bool // the name of cookies that should be relayed
 	maxBodySize    int64           // maximum length in bytes of relayed bodies
@@ -49,6 +56,7 @@ func New() relayPlugin {
 		transport,
 		"",
 		"",
+		[]special{},
 		"",
 		map[string]bool{},
 		DefaultMaxBodySize,
@@ -76,6 +84,7 @@ func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, client
 func (plug relayPlugin) ConfigVars() map[string]bool {
 	return map[string]bool{
 		trafficRelayTargetVar:         true,
+		trafficRelaySpecials:          false,
 		trafficRelayCookiesVar:        false,
 		trafficRelayMaxBodySizeVar:    false,
 		trafficRelayOriginOverrideVar: false,
@@ -91,6 +100,30 @@ func (plug *relayPlugin) Config() bool {
 	}
 	plug.targetScheme = targetURL.Scheme
 	plug.targetHost = targetURL.Host
+
+	specialsVar := os.Getenv(trafficRelaySpecials)
+	if len(specialsVar) > 0 {
+		specialsTokens := strings.Split(specialsVar, " ")
+		if len(specialsTokens)%2 != 0 {
+			logger.Printf("Could not parse %v environment variable: %v", trafficRelaySpecials, specialsTokens)
+			return false
+		}
+		for i := 0; i < len(specialsTokens); i += 2 {
+			matchVar := specialsTokens[i]
+			replacementString := specialsTokens[i+1]
+			matchRE, err := regexp.Compile(matchVar)
+			if err != nil {
+				logger.Printf("Could not compile regular expression \"%v\" in %v: %v", matchVar, trafficRelaySpecials, err)
+				return false
+			}
+			special := special{
+				matchRE,
+				replacementString,
+			}
+			plug.specials = append(plug.specials, special)
+			logger.Printf("Relaying special expression \"%v\" to \"%v\"", special.match, special.replacement)
+		}
+	}
 
 	originOverrideVar := os.Getenv(trafficRelayOriginOverrideVar)
 	if len(originOverrideVar) > 0 {
@@ -120,7 +153,24 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 	clientRequest.URL.Scheme = plug.targetScheme
 	clientRequest.URL.Host = plug.targetHost
 	clientRequest.Host = plug.targetHost
-	if len(plug.originOverride) > 0 {
+
+	if len(plug.specials) > 0 {
+		for _, special := range plug.specials {
+			if special.match.Match([]byte(clientRequest.URL.Path)) == false {
+				continue
+			}
+			urlVal := special.match.ReplaceAllString(clientRequest.URL.Path, special.replacement)
+			newURL, err := url.Parse(urlVal)
+			if err != nil {
+				logger.Printf("Failed to create URL for special %v: %v", special.match, err)
+			} else {
+				clientRequest.URL.Scheme = newURL.Scheme
+				clientRequest.URL.Host = newURL.Host
+				clientRequest.Host = newURL.Host
+				clientRequest.URL.Path = newURL.Path
+			}
+		}
+	} else if len(plug.originOverride) > 0 {
 		clientRequest.Header.Set(
 			"Origin",
 			fmt.Sprintf("%v://%v", plug.targetScheme, plug.originOverride),
