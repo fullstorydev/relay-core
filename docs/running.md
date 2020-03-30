@@ -1,13 +1,12 @@
 # Running Relay
 
-Pre-built binaries and Docker images are available for every version of the Relay so unless you need a custom build that's the way to go:
+Pre-built Docker images are available for every version of the Relay so unless you need a custom build that's the way to go:
 
-- [Pre-built binaries](https://github.com/fullstorydev/relay-core/releases)
-- [Docker images](https://github.com/fullstorydev/relay-core/packages)
+- [Pre-built Docker images](https://github.com/fullstorydev/relay-core/packages)
 
 ## Using Docker images
 
-In most cases you'll want to use a pre-built Docker image. It includes all of the default plugins and can be configured for your specific scenario.
+Pre-built Docker images include all of the default plugins and can be configured for your specific scenario.
 
 ### Using the pre-built Docker image
 
@@ -36,10 +35,11 @@ Pre-built:
 
 	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.1.2
 
+(update the `v0.1.2` if you're using a different version)
+
 Locally built:
 
 	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d relay:local-v0
-
 
 You'll want to change the various environment variables to suite your scenario, as documented in the [example dotenv file](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example).
 
@@ -53,7 +53,9 @@ While we provide [pre-built 'relay' binaries](https://github.com/fullstorydev/re
 	cd dist/
 	./relay
 
-(the pre-built Docker images already contain the plugins so if building is annoying you might try the Docker route)
+If you already have a distribution directory with the correct plugins then you can drop in new, pre-built binaries as they're released.
+
+The pre-built Docker images already contain the plugins so if building is annoying then you might try the Docker route.
 
 ## Configuration
 
