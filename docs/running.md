@@ -1,24 +1,15 @@
 # Running Relay
 
-To run the Relay you need the `relay` binary and you need a specific directory hierarchy containing [plugins](plugins.md). The default build creates `relay-core/dist/` containing both so the easiest way to get started is:
+Pre-built binaries and Docker images are available for every version of the Relay so unless you need a custom build that's the way to go:
 
-	cd relay-core/
-	make
-	# ... build output ...
-	cd dist/
-	./relay
+- [Pre-built binaries](https://github.com/fullstorydev/relay-core/releases)
+- [Docker images](https://github.com/fullstorydev/relay-core/packages)
 
-If you do that then you'll see error messages about missing environment variables because the `relay` and the plugins need a bit of configuration.
+## Using Docker images
 
-## Configuration during development and local testing
+In most cases you'll want to use a pre-built Docker image. It includes all of the default plugins and can be configured for your specific scenario.
 
-While in production you'll set environment variables, during development and local testing it's often easier to use a dotenv file. Relay will look for a dotenv file in the current working directory. You can find an example dotenv file in `relay-core/config/dotenv.example`. Copy that file into `relay-core/dist/.env` and change the values to your desired configuration.
-
-## Configuration in production
-
-Whether you're using a Docker container or running the binary in a shell script, in production you need to set up environment variables to configure `relay` and its plugins. Recognized environment variables are documented in `relay-core/config/dotenv.example` and the `relay` command will print helpful information when required variables are missing.
-
-## Using the per-release Docker image
+### Using the pre-built Docker image
 
 For each release version of Relay there is a Docker image hosted in GitHub's Packages registry. You can see them listed on the [relay-core packages page](https://github.com/fullstorydev/relay-core/packages).
 
@@ -26,19 +17,50 @@ Somewhat annoyingly, GitHub requires authentication in order to use even public 
 
 Once Docker is authenticated with GitHub you can pull the image in the usual way:
 
-	docker pull docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.0.1-alpha3
+	docker pull docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.1.2
 
-For production use you'll want to choose the latest, non-alpha version.
+You probably want the latest version so check for a version greater than v0.1.2.
 
-## Building a local Docker image
+### Building a local Docker image
 
-It can useful to build a local image for testing or for hosting in your own package registry instead of using one of the [release images](https://github.com/fullstorydev/relay-core/packages) hosted on GitHub's Packages registry.
+It can be useful to build a local image for testing or for hosting in your own package registry instead of using one of the [release images](https://github.com/fullstorydev/relay-core/packages) hosted on GitHub's Packages registry.
 
 To create an image:
 
 	cd relay-core/
 	docker build -t relay:local-v0 .
 
-To run the image:
+### Running the Docker image:
+
+Pre-built:
+
+	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.1.2
+
+Locally built:
 
 	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d relay:local-v0
+
+
+You'll want to change the various environment variables to suite your scenario, as documented in the [example dotenv file](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example).
+
+## Using binaries
+
+While we provide [pre-built 'relay' binaries](https://github.com/fullstorydev/relay-core/releases) for each version, to run the Relay you also need a specific directory hierarchy containing [plugins](plugins.md). The default build creates `relay-core/dist/` containing both binary and plugins so the easiest way to get started is:
+
+	cd relay-core/
+	make
+	# ... build output ...
+	cd dist/
+	./relay
+
+(the pre-built Docker images already contain the plugins so if building is annoying you might try the Docker route)
+
+## Configuration
+
+### Configuration in production
+
+Whether you're using a Docker container or running a binary in a shell script, in production you need to set up environment variables to configure `relay` and its plugins. Recognized environment variables are documented in [`relay-core/config/dotenv.example`](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example) and the `relay` command will print helpful information when required variables are missing.
+
+### Configuration during development and local testing
+
+In production you'll set environment variables but during development and local testing it's often easier to use a dotenv file. Relay will look for a dotenv file in the current working directory. You can find an example dotenv file with an explanation for each variable in [`relay-core/config/dotenv.example`](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example). Copy that file into `relay-core/dist/.env` and change the values to your desired configuration.
