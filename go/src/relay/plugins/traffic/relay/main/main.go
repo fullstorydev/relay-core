@@ -215,8 +215,6 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 
 	// Add X-Relay-Version header
 	clientRequest.Header.Add(RelayVersionHeaderName, RelayVersion)
-
-	logger.Println("Headers: %v", clientRequest.Header)
 }
 
 func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
