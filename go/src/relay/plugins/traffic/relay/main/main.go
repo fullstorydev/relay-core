@@ -18,6 +18,9 @@ import (
 
 const DefaultMaxBodySize int64 = 1024 * 2048 // 2MB
 
+const RelayVersionHeaderName = "X-Relay-Version"
+const RelayVersion = "v0.1.3" // TODO set this from tags automatically during git commit
+
 var (
 	// This is what relay.plugin.Plugins will load to handle traffic plugin duties
 	Plugin relayPlugin = New()
@@ -44,6 +47,14 @@ type relayPlugin struct {
 	originOverride string          // default to passing Origin header as-is, but set to override
 	relayedCookies map[string]bool // the name of cookies that should be relayed
 	maxBodySize    int64           // maximum length in bytes of relayed bodies
+}
+
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Forwarded
+type forwarded struct {
+	byHeader    string // The interface where the request came in to the proxy server.
+	forHeader   string // The client that initiated the request and subsequent proxies in a chain of proxies.
+	hostHeader  string // The Host request header field as received by the proxy.
+	protoHeader string // Indicates which protocol was used to make the request (typically "http" or "https").
 }
 
 func New() relayPlugin {
@@ -193,6 +204,19 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 		}
 		clientRequest.Header.Set("Cookie", cookieString.String())
 	}
+
+	// Add X-Forwarded-* headers
+	remoteAddrTokens := strings.Split(clientRequest.RemoteAddr, ":")
+	clientRequest.Header.Add("X-Forwarded-For", remoteAddrTokens[0])
+	if len(remoteAddrTokens) > 0 {
+		clientRequest.Header.Add("X-Forwarded-Port", remoteAddrTokens[1])
+	}
+	clientRequest.Header.Add("X-Forwarded-Proto", strings.ToLower(strings.Split(clientRequest.Proto, "/")[0]))
+
+	// Add X-Relay-Version header
+	clientRequest.Header.Add(RelayVersionHeaderName, RelayVersion)
+
+	logger.Println("Headers: %v", clientRequest.Header)
 }
 
 func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
