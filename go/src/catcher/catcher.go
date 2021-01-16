@@ -25,6 +25,10 @@ func Start(port int) (io.Closer, int, error) {
 		response.WriteHeader(http.StatusNotFound)
 		response.Write([]byte("No favicon"))
 	})
+	mux.HandleFunc("/forwarded", func(response http.ResponseWriter, request *http.Request) {
+		response.WriteHeader(http.StatusOK)
+		response.Write([]byte(fmt.Sprintf("%v", request.Header["X-Forwarded-For"])))
+	})
 	mux.HandleFunc(LastOriginPath, func(response http.ResponseWriter, request *http.Request) {
 		response.WriteHeader(http.StatusOK)
 		response.Write([]byte(lastOrigin))

@@ -43,6 +43,46 @@ func TestBasicRelay(t *testing.T) {
 	}
 }
 
+func TestXForwardedForRelay(t *testing.T) {
+	catcherCloser, _, relayCloser, relayPort, err := setupCatcherAndRelay()
+	if err != nil {
+		t.Errorf("Error starting catcher and relay: %v", err)
+	}
+	defer catcherCloser.Close()
+	defer relayCloser.Close()
+
+	relayURL := fmt.Sprintf("http://127.0.0.1:%v/forwarded", relayPort)
+	req, err := http.NewRequest("GET", relayURL, nil)
+	if err != nil {
+		t.Errorf("Error creating request: %v", err)
+		return
+	}
+
+	req.Header.Add("X-Forwarded-For", "203.0.113.195, 172.17.0.1")
+	req.Header.Add("X-Forwarded-For", "70.41.3.12")
+
+	client := &http.Client{}
+	response, err := client.Do(req)
+
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Errorf("Non-200 GET: %v", response)
+		return
+	}
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		t.Errorf("Error GETing body: %v", err)
+		return
+	}
+
+	// This is the stringified representation of ["203.0.113.195, 172.17.0.1", "70.41.3.12", "127.0.0.1"]
+	// This asserts that the calls to .Add just append each string to slice and the
+	// relay appended the request's RemoteAddr of 127.0.0.1
+	if bytes.Equal([]byte("[203.0.113.195, 172.17.0.1 70.41.3.12 127.0.0.1]"), body) == false {
+		t.Errorf("Wrong header: %v", string(body))
+	}
+}
+
 func TestOriginOverride(t *testing.T) {
 	newOrigin := "example.com"
 	os.Setenv("TRAFFIC_RELAY_ORIGIN_OVERRIDE", newOrigin)
