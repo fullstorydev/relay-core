@@ -4,3 +4,5 @@
 
 # runtime
 /dist
+
+/.vscode

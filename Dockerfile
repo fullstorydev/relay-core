@@ -1,10 +1,10 @@
 
-FROM golang:alpine AS builder
+FROM golang:1.18-alpine3.16 AS builder
 ADD ./go/src ./go/src
 ADD ./Makefile .
-RUN apk add --update make build-base git
+RUN apk add --update make build-base git binutils-gold
 RUN set -ex && \
-	make 
+	make
 
 FROM alpine
 RUN apk add --update ca-certificates
