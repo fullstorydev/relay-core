@@ -3,6 +3,7 @@ export DIST_PATH     := $(PROJECT_HOME)/dist
 export GOPATH       := $(PROJECT_HOME)/go
 export GOSRC       	:= $(GOPATH)/src
 export GOPKG       	:= $(GOPATH)/pkg
+export GO111MODULE	:= off
 
 .PHONY: all prep plugins cli compile test clean
 
