@@ -14,46 +14,53 @@ type EnvVar struct {
 	EnvKey     string
 	Required   bool
 	DefaultVal string
+	IsDir      bool
 }
 
-/*
-SetupEnvironment tries to set environment variables using .env then current env variables.
-It returns an error if one or more expected variables are not present from at least on of those sources.
-*/
-func SetupEnvironment(vars []EnvVar, dirs []string) error {
-	setupDotEnv(vars)
-	setupDefaultValues(vars)
-	return CheckEnvironment(vars, dirs)
+type Environment map[string]string
+
+// GetEnvironment tries to read environment variables from various sources. In
+// order of precedence:
+//  * OS environment variables.
+//  * Values from any .env file that may exist.
+//  * Default values specified by the caller.
+// It returns an error if one or more expected variables are not present in any
+// of the sources.
+func GetEnvironment(vars []EnvVar) (Environment, error) {
+	env := map[string]string{}
+	setupDefaultValues(vars, env)
+	readDotEnv(vars, env)
+	readEnvironment(vars, env)
+	return env, checkEnvironment(vars, env)
 }
 
-func CheckEnvironment(vars []EnvVar, dirs []string) error {
+func checkEnvironment(vars []EnvVar, env Environment) error {
 	for _, variable := range vars {
 		if variable.Required == false {
 			continue
 		}
-		envVal, found := os.LookupEnv(variable.EnvKey)
+
+		envVal, found := env[variable.EnvKey]
 		if found == false || len(envVal) == 0 {
 			return errors.New("Required environment variable is missing: " + variable.EnvKey)
 		}
-	}
 
-	for _, envKey := range dirs {
-		if checkDir(os.Getenv(envKey)) != nil {
-			logger.Println("Could not read " + envKey + " directory: " + os.Getenv(envKey))
-			return errors.New("Invalid directory: " + os.Getenv(envKey))
+		if variable.IsDir && checkDir(envVal) != nil {
+			logger.Println("Could not read " + variable.EnvKey + " directory: " + envVal)
+			return errors.New("Invalid directory: " + envVal)
 		}
 	}
 
 	return nil
 }
 
-func PrintEnvUsage(vars []EnvVar) {
+func PrintEnvUsage(vars []EnvVar, env Environment) {
 	logger.Println("Required configuration variables via .env or environment:")
 	for _, variable := range vars {
 		if variable.Required == false {
 			continue
 		}
-		envVal, found := os.LookupEnv(variable.EnvKey)
+		envVal, found := env[variable.EnvKey]
 		if found == false || len(envVal) == 0 {
 			logger.Println("\t" + variable.EnvKey + ": missing")
 		} else {
@@ -67,7 +74,7 @@ func PrintEnvUsage(vars []EnvVar) {
 		if variable.Required {
 			continue
 		}
-		envVal, found := os.LookupEnv(variable.EnvKey)
+		envVal, found := env[variable.EnvKey]
 		if found == false || len(envVal) == 0 {
 			logger.Println("\t" + variable.EnvKey + ": missing")
 		} else {
@@ -87,24 +94,30 @@ func checkDir(dirPath string) error {
 	return nil
 }
 
-// Set .env values to process env values if process env key doesn't already exist
-func setupDotEnv(vars []EnvVar) error {
+// readDotEnv reads environment variables from a .env file, if one is present,
+// and adds their values to env. Returns an error if reading from .env fails.
+func readDotEnv(vars []EnvVar, env Environment) error {
 	dotEnvVals, err := parseDotEnv(".env")
 	if err != nil {
 		return err
 	}
 	for key, value := range dotEnvVals {
-		_, found := os.LookupEnv(key)
-		if found {
-			continue
-		}
-		os.Setenv(key, value)
+		env[key] = value
 	}
 	return nil
 }
 
-func parseDotEnv(filePath string) (map[string]string, error) {
-	results := map[string]string{}
+func readEnvironment(vars []EnvVar, env Environment) {
+	for _, variable := range vars {
+		envVal, found := os.LookupEnv(variable.EnvKey)
+		if found && len(envVal) > 0 {
+			env[variable.EnvKey] = envVal
+		}
+	}
+}
+
+func parseDotEnv(filePath string) (Environment, error) {
+	results := Environment{}
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -140,15 +153,11 @@ func parseDotEnv(filePath string) (map[string]string, error) {
 	return results, nil
 }
 
-func setupDefaultValues(vars []EnvVar) {
+func setupDefaultValues(vars []EnvVar, env Environment) {
 	for _, variable := range vars {
 		if variable.DefaultVal == "" {
 			continue
 		}
-		envVal, found := os.LookupEnv(variable.EnvKey)
-		if found && len(envVal) != 0 {
-			continue
-		}
-		os.Setenv(variable.EnvKey, variable.DefaultVal)
+		env[variable.EnvKey] = variable.DefaultVal
 	}
 }

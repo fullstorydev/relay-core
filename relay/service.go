@@ -2,11 +2,10 @@ package relay
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 
-	"relay/plugins"
+	"github.com/fullstorydev/relay-core/relay/plugins"
 )
 
 var MonitorPath = "/__relay__up__/"
@@ -15,6 +14,7 @@ var MonitorPath = "/__relay__up__/"
 Service holds the ServMux for the monitoring page as well as traffic plugins
 */
 type Service struct {
+	listener       net.Listener
 	trafficService *TrafficService
 	mux            *http.ServeMux
 	plugins        *plugins.Plugins
@@ -42,16 +42,42 @@ func NewService(plugs *plugins.Plugins) *Service {
 	}
 }
 
-func (service *Service) Start(port int) (io.Closer, int, error) {
-	address := fmt.Sprintf("0.0.0.0:%v", port)
+func (service *Service) Address() string {
+	if service.listener == nil {
+		return ""
+	}
+	return service.listener.Addr().(*net.TCPAddr).String()
+}
+
+func (service *Service) Close() error {
+	if service.listener == nil {
+		return nil
+	}
+	return service.listener.Close()
+}
+
+func (service *Service) HttpUrl() string {
+	return fmt.Sprintf("http://%v", service.Address())
+}
+
+func (service *Service) Port() int {
+	if service.listener == nil {
+		return 0
+	}
+	return service.listener.Addr().(*net.TCPAddr).Port
+}
+
+func (service *Service) Start(host string, port int) error {
+	address := fmt.Sprintf("%v:%v", host, port)
 	server := &http.Server{
 		Addr:    address,
 		Handler: service.mux,
 	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return nil, -1, err
+		return err
 	}
+	service.listener = listener
 
 	go func() {
 		server.Serve(
@@ -61,5 +87,9 @@ func (service *Service) Start(port int) (io.Closer, int, error) {
 		)
 	}()
 
-	return listener, listener.Addr().(*net.TCPAddr).Port, nil
+	return nil
+}
+
+func (service *Service) WsUrl() string {
+	return fmt.Sprintf("ws://%v", service.Address())
 }

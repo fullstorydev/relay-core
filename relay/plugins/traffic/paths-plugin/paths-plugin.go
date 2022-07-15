@@ -1,4 +1,4 @@
-package main
+package paths_plugin
 
 /*
 	The Paths plugin watches incoming traffic and optionally rewrites request URL paths.
@@ -6,34 +6,67 @@ package main
 */
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
+
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
 var (
-	// This is what relay.plugin.Plugins will load to handle traffic plugin duties
-	Plugin         pathsPlugin = New()
-	logger                     = log.New(os.Stdout, "[traffic-paths] ", 0)
-	matchVar                   = "TRAFFIC_PATHS_MATCH"       // A go regexp string or empty
-	replacementVar             = "TRAFFIC_PATHS_REPLACEMENT" // A go repl string or empty
+	Factory    pathsPluginFactory
+	logger     = log.New(os.Stdout, "[traffic-paths] ", 0)
+	pluginName = "Paths"
+
+	matchVar       = "TRAFFIC_PATHS_MATCH"       // A go regexp string or empty
+	replacementVar = "TRAFFIC_PATHS_REPLACEMENT" // A go repl string or empty
 )
+
+type pathsPluginFactory struct{}
+
+func (f pathsPluginFactory) Name() string {
+	return pluginName
+}
+
+func (f pathsPluginFactory) ConfigVars() map[string]bool {
+	return map[string]bool{
+		matchVar:       false,
+		replacementVar: false,
+	}
+}
+
+func (f pathsPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
+	match := env[matchVar]
+	replacement := env[replacementVar]
+	if len(match) == 0 && len(replacement) == 0 {
+		return nil, nil
+	}
+	if len(match) == 0 {
+		return nil, fmt.Errorf("Paths plugin has %v but not %v", replacementVar, matchVar)
+	}
+
+	matchRE, err := regexp.Compile(match)
+	if err != nil {
+		return nil, fmt.Errorf("Could not compile %v regular expression: %v", matchVar, err)
+	}
+
+	logger.Printf("Paths plugin will replace all \"%s\" with \"%s\"", matchRE, replacement)
+
+	return &pathsPlugin{
+		match:       matchRE,
+		replacement: replacement,
+	}, nil
+}
 
 type pathsPlugin struct {
 	match       *regexp.Regexp
 	replacement string
 }
 
-func New() pathsPlugin {
-	return pathsPlugin{
-		match:       nil,
-		replacement: "",
-	}
-}
-
 func (plug pathsPlugin) Name() string {
-	return "Paths"
+	return pluginName
 }
 
 func (plug pathsPlugin) HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool {
@@ -42,38 +75,6 @@ func (plug pathsPlugin) HandleRequest(response http.ResponseWriter, request *htt
 	}
 	request.URL.Path = plug.match.ReplaceAllString(request.URL.Path, plug.replacement)
 	return false
-}
-
-func (plug pathsPlugin) ConfigVars() map[string]bool {
-	return map[string]bool{
-		matchVar:       false,
-		replacementVar: false,
-	}
-}
-
-func (plug *pathsPlugin) Config() bool {
-	match := os.Getenv(matchVar)
-	replacement := os.Getenv(replacementVar)
-	if len(match) == 0 && len(replacement) == 0 {
-		return true
-	}
-	if len(match) == 0 {
-		logger.Println("Paths plugin has", replacementVar, "but not", matchVar)
-		return false
-	}
-
-	matchRE, err := regexp.Compile(match)
-	if err != nil {
-		logger.Println("Could not compile", matchVar, "regular expression:", err)
-		return false
-	}
-
-	plug.match = matchRE
-	plug.replacement = replacement
-
-	logger.Printf("Paths plugin will replace all \"%s\" with \"%s\"", plug.match, plug.replacement)
-
-	return true
 }
 
 /*

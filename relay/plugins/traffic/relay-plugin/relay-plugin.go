@@ -1,4 +1,4 @@
-package main
+package relay_plugin
 
 import (
 	"bytes"
@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
 const DefaultMaxBodySize int64 = 1024 * 2048 // 2MB
@@ -22,17 +24,103 @@ const RelayVersionHeaderName = "X-Relay-Version"
 const RelayVersion = "v0.1.3" // TODO set this from tags automatically during git commit
 
 var (
-	// This is what relay.plugin.Plugins will load to handle traffic plugin duties
-	Plugin relayPlugin = New()
+	Factory    relayPluginFactory
+	logger     = log.New(os.Stdout, "[traffic-relay] ", 0)
+	pluginName = "Relay"
 
 	hasPort                       = regexp.MustCompile(`:\d+$`)
-	logger                        = log.New(os.Stdout, "[traffic-relay] ", 0)
 	trafficRelayTargetVar         = "TRAFFIC_RELAY_TARGET"
 	trafficRelayCookiesVar        = "TRAFFIC_RELAY_COOKIES"
 	trafficRelayMaxBodySizeVar    = "TRAFFIC_RELAY_MAX_BODY_SIZE"
 	trafficRelayOriginOverrideVar = "TRAFFIC_RELAY_ORIGIN_OVERRIDE"
 	trafficRelaySpecials          = "TRAFFIC_RELAY_SPECIALS"
 )
+
+type relayPluginFactory struct{}
+
+func (f relayPluginFactory) Name() string {
+	return pluginName
+}
+
+func (f relayPluginFactory) ConfigVars() map[string]bool {
+	return map[string]bool{
+		trafficRelayTargetVar:         true,
+		trafficRelaySpecials:          false,
+		trafficRelayCookiesVar:        false,
+		trafficRelayMaxBodySizeVar:    false,
+		trafficRelayOriginOverrideVar: false,
+	}
+}
+
+func (f relayPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{},
+		Proxy:           http.ProxyFromEnvironment,
+		IdleConnTimeout: 2 * time.Second, // TODO set from configs
+	}
+	plugin := &relayPlugin{
+		transport:      transport,
+		targetScheme:   "",
+		targetHost:     "",
+		specials:       []special{},
+		originOverride: "",
+		relayedCookies: map[string]bool{},
+		maxBodySize:    DefaultMaxBodySize,
+	}
+
+	targetVar := env[trafficRelayTargetVar]
+	targetURL, err := url.Parse(targetVar)
+	if err != nil {
+		return nil, fmt.Errorf("Could not parse %v environment variable URL: %v", trafficRelayTargetVar, targetVar)
+	}
+	plugin.targetScheme = targetURL.Scheme
+	plugin.targetHost = targetURL.Host
+
+	specialsVar := env[trafficRelaySpecials]
+	if len(specialsVar) > 0 {
+		specialsTokens := strings.Split(specialsVar, " ")
+		if len(specialsTokens)%2 != 0 {
+			return nil, fmt.Errorf("Could not parse %v environment variable: %v", trafficRelaySpecials, specialsTokens)
+		}
+		for i := 0; i < len(specialsTokens); i += 2 {
+			matchVar := specialsTokens[i]
+			replacementString := specialsTokens[i+1]
+			matchRE, err := regexp.Compile(matchVar)
+			if err != nil {
+				return nil, fmt.Errorf("Could not compile regular expression \"%v\" in %v: %v", matchVar, trafficRelaySpecials, err)
+			}
+			special := special{
+				matchRE,
+				replacementString,
+			}
+			plugin.specials = append(plugin.specials, special)
+			logger.Printf("Relaying special expression \"%v\" to \"%v\"", special.match, special.replacement)
+		}
+	}
+
+	originOverrideVar := env[trafficRelayOriginOverrideVar]
+	if len(originOverrideVar) > 0 {
+		plugin.originOverride = originOverrideVar
+	}
+
+	cookiesVar := env[trafficRelayCookiesVar]
+	if len(cookiesVar) > 0 {
+		for _, cookieName := range strings.Split(cookiesVar, " ") { // Should we support spaces?
+			plugin.relayedCookies[cookieName] = true
+		}
+	}
+
+	maxBodySizeVar := env[trafficRelayMaxBodySizeVar]
+	if len(maxBodySizeVar) > 0 {
+		maxBodySize, err := strconv.ParseInt(maxBodySizeVar, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("Error parsing TRAFFIC_RELAY_MAX_BODY_SIZE environment variable: %v", err)
+		}
+		plugin.maxBodySize = maxBodySize
+	}
+
+	return plugin, nil
+}
 
 type special struct {
 	match       *regexp.Regexp
@@ -57,25 +145,8 @@ type forwarded struct {
 	protoHeader string // Indicates which protocol was used to make the request (typically "http" or "https").
 }
 
-func New() relayPlugin {
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{},
-		Proxy:           http.ProxyFromEnvironment,
-		IdleConnTimeout: 2 * time.Second, // TODO set from configs
-	}
-	return relayPlugin{
-		transport,
-		"",
-		"",
-		[]special{},
-		"",
-		map[string]bool{},
-		DefaultMaxBodySize,
-	}
-}
-
 func (plug relayPlugin) Name() string {
-	return "Relay"
+	return pluginName
 }
 
 func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool) bool {
@@ -90,74 +161,6 @@ func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, client
 	} else {
 		return plug.handleHttp(clientResponse, clientRequest)
 	}
-}
-
-func (plug relayPlugin) ConfigVars() map[string]bool {
-	return map[string]bool{
-		trafficRelayTargetVar:         true,
-		trafficRelaySpecials:          false,
-		trafficRelayCookiesVar:        false,
-		trafficRelayMaxBodySizeVar:    false,
-		trafficRelayOriginOverrideVar: false,
-	}
-}
-
-func (plug *relayPlugin) Config() bool {
-	targetVar := os.Getenv(trafficRelayTargetVar)
-	targetURL, err := url.Parse(targetVar)
-	if err != nil {
-		logger.Printf("Could not parse %v environment variable URL: %v", trafficRelayTargetVar, targetVar)
-		return false
-	}
-	plug.targetScheme = targetURL.Scheme
-	plug.targetHost = targetURL.Host
-
-	specialsVar := os.Getenv(trafficRelaySpecials)
-	if len(specialsVar) > 0 {
-		specialsTokens := strings.Split(specialsVar, " ")
-		if len(specialsTokens)%2 != 0 {
-			logger.Printf("Could not parse %v environment variable: %v", trafficRelaySpecials, specialsTokens)
-			return false
-		}
-		for i := 0; i < len(specialsTokens); i += 2 {
-			matchVar := specialsTokens[i]
-			replacementString := specialsTokens[i+1]
-			matchRE, err := regexp.Compile(matchVar)
-			if err != nil {
-				logger.Printf("Could not compile regular expression \"%v\" in %v: %v", matchVar, trafficRelaySpecials, err)
-				return false
-			}
-			special := special{
-				matchRE,
-				replacementString,
-			}
-			plug.specials = append(plug.specials, special)
-			logger.Printf("Relaying special expression \"%v\" to \"%v\"", special.match, special.replacement)
-		}
-	}
-
-	originOverrideVar := os.Getenv(trafficRelayOriginOverrideVar)
-	if len(originOverrideVar) > 0 {
-		plug.originOverride = originOverrideVar
-	}
-
-	cookiesVar := os.Getenv(trafficRelayCookiesVar)
-	if len(cookiesVar) > 0 {
-		for _, cookieName := range strings.Split(cookiesVar, " ") { // Should we support spaces?
-			plug.relayedCookies[cookieName] = true
-		}
-	}
-
-	maxBodySizeVar := os.Getenv(trafficRelayMaxBodySizeVar)
-	if len(maxBodySizeVar) > 0 {
-		maxBodySize, err := strconv.ParseInt(maxBodySizeVar, 10, 64)
-		if err != nil {
-			logger.Println("Error parsing TRAFFIC_RELAY_MAX_BODY_SIZE environment variable", err)
-			return false
-		}
-		plug.maxBodySize = maxBodySize
-	}
-	return true
 }
 
 func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {

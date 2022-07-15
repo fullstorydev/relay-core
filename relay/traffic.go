@@ -1,45 +1,34 @@
-package traffic
+package relay
 
 import (
-	"log"
 	"net/http"
-	"os"
+
+	"github.com/fullstorydev/relay-core/relay/plugins"
 )
 
-var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
-
 /*
-	relay.plugins.Plugins loads traffic plugins in order to service HTTP requests
+TrafficService services HTTP requests by calling through to traffic plugins
 */
-type TrafficPlugin interface {
-	/*
-		A human readable name for this plugin, like "Logging" or "Attack detector"
-	*/
-	Name() string
+type TrafficService struct {
+	plugins *plugins.Plugins
+}
 
-	/*
-		HandleRequest is with an incoming traffic HTTP request
-		`serviced` is true if a previously called TrafficPlugin has responded to the request
-		returns true iff the response has been fully serviced
-	*/
-	HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool
+func NewTrafficService(plugs *plugins.Plugins) *TrafficService {
+	return &TrafficService{
+		plugins: plugs,
+	}
+}
 
-	/*
-		ConfigVars returns a map of environment variables and whether they are required by this plugin
-		For example, if the plugin expects environment variables  and MIN_LENGTH and can't work if MIN_LENGTH is set then the return value would be:
-
-			return map[string]bool{
-				"MAX_COUNT":   false,
-				"MIN_LENGTH":  true,
-			}
-
-	*/
-	ConfigVars() map[string]bool
-
-	/*
-		Config checks whether the plugin has the environment variables needed to run
-	*/
-	Config() bool
+func (service *TrafficService) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	serviced := false
+	for _, trafficPlugin := range service.plugins.Traffic {
+		if trafficPlugin.HandleRequest(response, request, serviced) {
+			serviced = true
+		}
+	}
+	if serviced == false {
+		http.NotFound(response, request)
+	}
 }
 
 /*
