@@ -11,6 +11,7 @@ plugins:
 	mkdir -p $(DIST_PATH)/plugins/traffic/active
 	mkdir -p $(DIST_PATH)/plugins/traffic/inactive
 	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/010-paths.so $(RELAY_MODULE)/relay/plugins/traffic/paths-plugin/main
+	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/015-paths.so $(RELAY_MODULE)/relay/plugins/traffic/content-blocker-plugin/main
 	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/020-relay.so $(RELAY_MODULE)/relay/plugins/traffic/relay-plugin/main
 	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/030-logging.so $(RELAY_MODULE)/relay/plugins/traffic/logging-plugin/main
 
