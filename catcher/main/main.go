@@ -1,20 +1,23 @@
+// Catcher is a simple web server used for testing the relay service.
 package main
 
 import (
-	"catcher"
 	"log"
 	"os"
 	"time"
+
+	"github.com/fullstorydev/relay-core/catcher"
 )
 
 var logger = log.New(os.Stdout, "[catcher] ", 0)
 
 func main() {
-	_, port, err := catcher.Start(catcher.ServicePort)
+	service := catcher.NewService()
+	err := service.Start("0.0.0.0", catcher.ServicePort)
 	if err != nil {
 		panic("Could not start catcher service: " + err.Error())
 	}
-	logger.Println("Catcher listening on port", port)
+	logger.Println("Catcher listening on port", service.Port())
 	for {
 		time.Sleep(100 * time.Minute)
 	}

@@ -1,34 +1,47 @@
-package relay
+package logging_plugin
 
 import (
+	"log"
 	"net/http"
+	"os"
 
-	"relay/plugins"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
-/*
-TrafficService services HTTP requests by calling through to traffic plugins
-*/
-type TrafficService struct {
-	plugins *plugins.Plugins
+var (
+	Factory    loggingPluginFactory
+	logger     = log.New(os.Stdout, "[traffic-logging] ", 0)
+	pluginName = "Logging"
+)
+
+type loggingPluginFactory struct{}
+
+func (f loggingPluginFactory) Name() string {
+	return pluginName
 }
 
-func NewTrafficService(plugs *plugins.Plugins) *TrafficService {
-	return &TrafficService{
-		plugins: plugs,
-	}
+func (f loggingPluginFactory) ConfigVars() map[string]bool {
+	return map[string]bool{}
 }
 
-func (service *TrafficService) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	serviced := false
-	for _, trafficPlugin := range service.plugins.Traffic {
-		if trafficPlugin.HandleRequest(response, request, serviced) {
-			serviced = true
-		}
-	}
+func (f loggingPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
+	return &loggingPlugin{}, nil
+}
+
+type loggingPlugin struct{}
+
+func (plug *loggingPlugin) Name() string {
+	return pluginName
+}
+
+func (plug *loggingPlugin) HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool {
+	servicedMessage := "serviced"
 	if serviced == false {
-		http.NotFound(response, request)
+		servicedMessage = "not serviced"
 	}
+
+	logger.Printf("%s %s %s: %s", request.Method, request.Host, request.URL, servicedMessage)
+	return false
 }
 
 /*

@@ -1,33 +1,27 @@
 export PROJECT_HOME := $(shell pwd)
 export DIST_PATH     := $(PROJECT_HOME)/dist
-export GOPATH       := $(PROJECT_HOME)/go
-export GOSRC       	:= $(GOPATH)/src
-export GOPKG       	:= $(GOPATH)/pkg
-export GO111MODULE	:= off
+export PLUGIN_DIST_PATH := $(DIST_PATH)/plugins/traffic
+export RELAY_MODULE := github.com/fullstorydev/relay-core
 
-.PHONY: all prep plugins cli compile test clean
+.PHONY: all plugins cli compile test clean
 
-all: prep plugins cli
-
-prep:
-	go get golang.org/x/net/websocket
+all: compile
 
 plugins:
 	mkdir -p $(DIST_PATH)/plugins/traffic/active
 	mkdir -p $(DIST_PATH)/plugins/traffic/inactive
-	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/010-paths.so $(GOSRC)/relay/plugins/traffic/paths/main/main.go
-	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/020-relay.so $(GOSRC)/relay/plugins/traffic/relay/main/main.go
-	go build -buildmode=plugin -o $(DIST_PATH)/plugins/traffic/active/030-logging.so $(GOSRC)/relay/plugins/traffic/logging/main/main.go
+	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/010-paths.so $(RELAY_MODULE)/relay/plugins/traffic/paths-plugin/main
+	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/020-relay.so $(RELAY_MODULE)/relay/plugins/traffic/relay-plugin/main
+	go build -buildmode=plugin -o $(PLUGIN_DIST_PATH)/active/030-logging.so $(RELAY_MODULE)/relay/plugins/traffic/logging-plugin/main
 
 cli:
-	go build -o $(DIST_PATH)/relay $(GOSRC)/relay/main/main.go
-	go build -o $(DIST_PATH)/catcher $(GOSRC)/catcher/main/main.go
+	go build -o $(DIST_PATH)/relay $(RELAY_MODULE)/relay/main
+	go build -o $(DIST_PATH)/catcher $(RELAY_MODULE)/catcher/main
 
 compile: plugins cli
 
-test: prep compile
-	go test -v relay/...
+test: compile
+	go test -v $(RELAY_MODULE)/...
 
 clean:
 	rm -rf $(DIST_PATH)/*
-	rm -rf $(GOPKG)/*

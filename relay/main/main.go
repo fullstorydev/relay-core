@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"relay"
-	"relay/commands"
-	"relay/plugins"
+	"github.com/fullstorydev/relay-core/relay"
+	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/plugins"
 )
 
 var logger = log.New(os.Stdout, "[relay] ", 0)
@@ -18,30 +18,33 @@ var logger = log.New(os.Stdout, "[relay] ", 0)
 var RelayPortVar = "RELAY_PORT"
 var RelayPluginsPathVar = "RELAY_PLUGINS_PATH"
 
-// This defines whether config variables are required
 var EnvVars = []commands.EnvVar{
-	{RelayPortVar, true, ""},
-	{RelayPluginsPathVar, false, "./plugins"},
-}
-
-// These config variables, if set, must be paths to valid directories
-var DirExistenceVars = []string{
-	RelayPluginsPathVar,
+	{
+		EnvKey:   RelayPortVar,
+		Required: true,
+	},
+	{
+		EnvKey:     RelayPluginsPathVar,
+		DefaultVal: "./plugins",
+		IsDir:      true,
+	},
 }
 
 func main() {
-	if commands.SetupEnvironment(EnvVars, DirExistenceVars) != nil {
-		commands.PrintEnvUsage(EnvVars)
+	env, err := commands.GetEnvironment(EnvVars)
+	if err != nil {
+		commands.PrintEnvUsage(EnvVars, env)
 		os.Exit(1)
 	}
-	parsedPort, err := strconv.ParseInt(os.Getenv(RelayPortVar), 10, 32)
+
+	parsedPort, err := strconv.ParseInt(env[RelayPortVar], 10, 32)
 	if err != nil {
-		logger.Printf("Error parsing relay port: \"%v\"", os.Getenv(RelayPortVar))
+		logger.Printf("Error parsing relay port: \"%v\"", env[RelayPortVar])
 		os.Exit(1)
 	}
 	relayPort := int(parsedPort)
 
-	pluginsPath := os.Getenv(RelayPluginsPathVar)
+	pluginsPath := env[RelayPluginsPathVar]
 
 	plugs := plugins.New()
 	err = plugs.Load(pluginsPath)
@@ -49,23 +52,23 @@ func main() {
 		logger.Println(fmt.Sprintf("Error loading plugins:\n\t%v", err))
 		os.Exit(1)
 	}
-	err = plugs.SetupEnvironment()
-	if err != nil {
+
+	if pluginEnv, err := plugs.SetupEnvironment(); err != nil {
 		logger.Println(err)
-		plugs.PrintEnvUsage()
+		commands.PrintEnvUsage(plugs.TrafficEnvVars(), pluginEnv)
 		os.Exit(1)
 	}
+
 	logger.Println("Plugins:")
 	for _, tp := range plugs.Traffic {
 		logger.Println("\tTraffic:", tp.Name())
 	}
 
 	relayService := relay.NewService(plugs)
-	_, port, err := relayService.Start(relayPort)
-	if err != nil {
+	if err := relayService.Start("0.0.0.0", relayPort); err != nil {
 		panic("Could not start catcher service: " + err.Error())
 	}
-	logger.Println("Relay listening on port", port)
+	logger.Println("Relay listening on port", relayService.Port())
 	for {
 		time.Sleep(100 * time.Minute)
 	}
