@@ -169,6 +169,8 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 		expectedHeaders = make(map[string]string)
 	}
 
+	expectedHeaders[content_blocker_plugin.PluginVersionHeaderName] = content_blocker_plugin.PluginVersion
+
 	test.WithCatcherAndRelay(t, testCase.env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 		request, err := http.NewRequest(
 			"POST",

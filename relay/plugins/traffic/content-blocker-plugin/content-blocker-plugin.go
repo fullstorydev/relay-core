@@ -50,6 +50,9 @@ var (
 	logger     = log.New(os.Stdout, "[traffic-content-blocker] ", 0)
 	pluginName = "Content-Blocker"
 
+	PluginVersionHeaderName = "X-Relay-Content-Blocker-Version"
+	PluginVersion           = "v0.1.3"
+
 	excludeBodyContentVar   = "TRAFFIC_EXCLUDE_BODY_CONTENT"   // A go regexp string or empty
 	maskBodyContentVar      = "TRAFFIC_MASK_BODY_CONTENT"      // A go regexp string or empty
 	excludeHeaderContentVar = "TRAFFIC_EXCLUDE_HEADER_CONTENT" // A go regexp string or empty
@@ -118,6 +121,10 @@ func (plug contentBlockerPlugin) HandleRequest(response http.ResponseWriter, req
 	if serviced := plug.blockBodyContent(response, request); serviced {
 		return true
 	}
+
+	// Tag the request with a header for debugging purposes.
+	request.Header.Add(PluginVersionHeaderName, PluginVersion)
+
 	return false
 }
 
