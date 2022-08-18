@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
@@ -20,11 +21,9 @@ func (f loggingPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f loggingPluginFactory) ConfigVars() map[string]bool {
-	return map[string]bool{}
-}
-
-func (f loggingPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
+func (f loggingPluginFactory) New(
+	envProvider commands.EnvironmentProvider,
+) (traffic.Plugin, error) {
 	return &loggingPlugin{}, nil
 }
 

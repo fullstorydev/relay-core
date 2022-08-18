@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
@@ -42,17 +43,23 @@ func (f relayPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f relayPluginFactory) ConfigVars() map[string]bool {
-	return map[string]bool{
-		trafficRelayTargetVar:         true,
-		trafficRelaySpecials:          false,
-		trafficRelayCookiesVar:        false,
-		trafficRelayMaxBodySizeVar:    false,
-		trafficRelayOriginOverrideVar: false,
+func (f relayPluginFactory) New(
+	envProvider commands.EnvironmentProvider,
+) (traffic.Plugin, error) {
+	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
+		{
+			EnvKey:   trafficRelayTargetVar,
+			Required: true,
+		},
+		{EnvKey: trafficRelaySpecials},
+		{EnvKey: trafficRelayCookiesVar},
+		{EnvKey: trafficRelayMaxBodySizeVar},
+		{EnvKey: trafficRelayOriginOverrideVar},
+	})
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (f relayPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{},
 		Proxy:           http.ProxyFromEnvironment,

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -16,24 +15,17 @@ var logger = log.New(os.Stdout, "[relay] ", 0)
 
 // These are the env variables in play
 var RelayPortVar = "RELAY_PORT"
-var RelayPluginsPathVar = "RELAY_PLUGINS_PATH"
-
-var EnvVars = []commands.EnvVar{
-	{
-		EnvKey:   RelayPortVar,
-		Required: true,
-	},
-	{
-		EnvKey:     RelayPluginsPathVar,
-		DefaultVal: "./plugins",
-		IsDir:      true,
-	},
-}
 
 func main() {
-	env, err := commands.GetEnvironment(EnvVars)
+	envProvider := commands.NewDefaultEnvironmentProvider()
+	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
+		{
+			EnvKey:   RelayPortVar,
+			Required: true,
+		},
+	})
 	if err != nil {
-		commands.PrintEnvUsage(EnvVars, env)
+		logger.Println(err)
 		os.Exit(1)
 	}
 
@@ -44,27 +36,18 @@ func main() {
 	}
 	relayPort := int(parsedPort)
 
-	pluginsPath := env[RelayPluginsPathVar]
-
-	plugs := plugins.New()
-	err = plugs.Load(pluginsPath)
+	trafficPlugins, err := plugins.Load(plugins.Default, envProvider)
 	if err != nil {
-		logger.Println(fmt.Sprintf("Error loading plugins:\n\t%v", err))
-		os.Exit(1)
-	}
-
-	if pluginEnv, err := plugs.SetupEnvironment(); err != nil {
 		logger.Println(err)
-		commands.PrintEnvUsage(plugs.TrafficEnvVars(), pluginEnv)
 		os.Exit(1)
 	}
 
 	logger.Println("Plugins:")
-	for _, tp := range plugs.Traffic {
+	for _, tp := range trafficPlugins {
 		logger.Println("\tTraffic:", tp.Name())
 	}
 
-	relayService := relay.NewService(plugs)
+	relayService := relay.NewService(trafficPlugins)
 	if err := relayService.Start("0.0.0.0", relayPort); err != nil {
 		panic("Could not start catcher service: " + err.Error())
 	}

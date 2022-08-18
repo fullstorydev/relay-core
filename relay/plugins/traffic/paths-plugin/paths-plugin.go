@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
@@ -30,14 +31,17 @@ func (f pathsPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f pathsPluginFactory) ConfigVars() map[string]bool {
-	return map[string]bool{
-		matchVar:       false,
-		replacementVar: false,
+func (f pathsPluginFactory) New(
+	envProvider commands.EnvironmentProvider,
+) (traffic.Plugin, error) {
+	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
+		{EnvKey: matchVar},
+		{EnvKey: replacementVar},
+	})
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (f pathsPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
 	match := env[matchVar]
 	replacement := env[replacementVar]
 	if len(match) == 0 && len(replacement) == 0 {

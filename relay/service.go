@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/fullstorydev/relay-core/relay/plugins"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
 var MonitorPath = "/__relay__up__/"
@@ -17,10 +17,9 @@ type Service struct {
 	listener       net.Listener
 	trafficService *TrafficService
 	mux            *http.ServeMux
-	plugins        *plugins.Plugins
 }
 
-func NewService(plugs *plugins.Plugins) *Service {
+func NewService(trafficPlugins []traffic.Plugin) *Service {
 	mux := http.NewServeMux()
 
 	// Write a simple page for monitoring
@@ -30,7 +29,7 @@ func NewService(plugs *plugins.Plugins) *Service {
 	})
 
 	// Handle everything else with traffic plugins
-	trafficService := NewTrafficService(plugs)
+	trafficService := NewTrafficService(trafficPlugins)
 	mux.Handle("/", trafficService)
 
 	// TODO add a control/monitoring service
@@ -38,7 +37,6 @@ func NewService(plugs *plugins.Plugins) *Service {
 	return &Service{
 		trafficService: trafficService,
 		mux:            mux,
-		plugins:        plugs,
 	}
 }
 

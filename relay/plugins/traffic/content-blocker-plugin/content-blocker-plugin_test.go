@@ -9,6 +9,7 @@ import (
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
 	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
 	"github.com/fullstorydev/relay-core/relay/test"
 )
@@ -111,8 +112,8 @@ func TestContentBlockerBlocksWebsockets(t *testing.T) {
 	env := commands.Environment{
 		"TRAFFIC_MASK_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 	}
-	plugins := map[string]bool{
-		content_blocker_plugin.Factory.Name(): true,
+	plugins := []traffic.PluginFactory{
+		content_blocker_plugin.Factory,
 	}
 
 	test.WithCatcherAndRelay(t, env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
@@ -155,8 +156,8 @@ type contentBlockerTestCase struct {
 }
 
 func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
-	plugins := map[string]bool{
-		content_blocker_plugin.Factory.Name(): true,
+	plugins := []traffic.PluginFactory{
+		content_blocker_plugin.Factory,
 	}
 
 	originalHeaders := testCase.originalHeaders

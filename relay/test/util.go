@@ -7,6 +7,7 @@ import (
 	"github.com/fullstorydev/relay-core/relay"
 	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/plugins"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic/logging-plugin"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic/relay-plugin"
 )
@@ -21,7 +22,7 @@ import (
 func WithCatcherAndRelay(
 	t *testing.T,
 	env commands.Environment,
-	pluginAllowlist map[string]bool,
+	pluginFactories []traffic.PluginFactory,
 	action func(catcherService *catcher.Service, relayService *relay.Service),
 ) {
 	if env == nil {
@@ -36,7 +37,7 @@ func WithCatcherAndRelay(
 	defer catcherService.Close()
 
 	env["TRAFFIC_RELAY_TARGET"] = catcherService.HttpUrl()
-	relayService, err := setupRelay(env, pluginAllowlist)
+	relayService, err := setupRelay(env, pluginFactories)
 	if err != nil {
 		t.Errorf("Error setting up relay: %v", err)
 		return
@@ -51,25 +52,17 @@ func WithCatcherAndRelay(
 	action(catcherService, relayService)
 }
 
-func setupRelay(env commands.Environment, pluginAllowlist map[string]bool) (*relay.Service, error) {
-	var pluginsPath string = "../../../../dist/plugins"
-
-	if pluginAllowlist == nil {
-		pluginAllowlist = make(map[string]bool)
-	}
-
-	// Always allowlist the Relay and Logging plugins, since in practice every
+func setupRelay(env commands.Environment, pluginFactories []traffic.PluginFactory) (*relay.Service, error) {
+	// Always include the Relay and Logging plugins, since in practice every
 	// test wants them.
-	pluginAllowlist[relay_plugin.Factory.Name()] = true
-	pluginAllowlist[logging_plugin.Factory.Name()] = true
+	pluginFactories = append(pluginFactories, relay_plugin.Factory)
+	pluginFactories = append(pluginFactories, logging_plugin.Factory)
 
-	plugs := plugins.New()
-	if err := plugs.LoadWithFilter(pluginsPath, pluginAllowlist); err != nil {
-		return nil, err
-	}
-	if err := plugs.ConfigurePlugins(env); err != nil {
+	envProvider := commands.NewTestEnvironmentProvider(env)
+	trafficPlugins, err := plugins.Load(pluginFactories, envProvider)
+	if err != nil {
 		return nil, err
 	}
 
-	return relay.NewService(plugs), nil
+	return relay.NewService(trafficPlugins), nil
 }

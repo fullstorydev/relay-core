@@ -42,6 +42,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
@@ -65,16 +66,19 @@ func (f contentBlockerPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f contentBlockerPluginFactory) ConfigVars() map[string]bool {
-	return map[string]bool{
-		excludeBodyContentVar:   false,
-		maskBodyContentVar:      false,
-		excludeHeaderContentVar: false,
-		maskHeaderContentVar:    false,
+func (f contentBlockerPluginFactory) New(
+	envProvider commands.EnvironmentProvider,
+) (traffic.Plugin, error) {
+	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
+		{EnvKey: excludeBodyContentVar},
+		{EnvKey: maskBodyContentVar},
+		{EnvKey: excludeHeaderContentVar},
+		{EnvKey: maskHeaderContentVar},
+	})
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (f contentBlockerPluginFactory) New(env map[string]string) (traffic.Plugin, error) {
 	bodyBlockers, err := newContentBlockerList(
 		env,
 		"body",

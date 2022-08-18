@@ -4,41 +4,29 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/fullstorydev/relay-core/relay/commands"
 )
 
 var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 
-// PluginFactory is the interface that the relay uses to create instances of
-// plugins from a shared object. Each shared object that exposes a relay plugin
-// must provide a public symbol named Factory that implements this interface.
-// The relay code will invoke Factory#New() to create an instance of the plugin.
+// PluginFactory is the interface that the relay uses to create plugin
+// instances.
 type PluginFactory interface {
 	// Name returns a human readable name for this plugin, like "Logging" or
 	// "Attack detector".
 	Name() string
 
-	// ConfigVars returns a map of environment variables and whether they are
-	// required by this plugin. For example, if the plugin expects environment
-	// variables  and MIN_LENGTH and can't work if MIN_LENGTH is set then the
-	// return value would be:
-	//     return map[string]bool{
-	//         "MAX_COUNT":   false,
-	//         "MIN_LENGTH":  true,
-	//     }
-	ConfigVars() map[string]bool
-
 	// New configures and returns an instance of this plugin, or an error if
-	// configuration failed.
-	//
-	// The env parameter is a map from environment variable names to their
-	// values. The map includes values from any .env file that may exist, so
-	// plugins should use it instead of reading from the environment directly.
+	// configuration failed. Configuration options are read from the given
+	// environment provider.
 	//
 	// Factories may return nil if the plugin should be inactive given the
 	// provided configuration.
-	New(env map[string]string) (Plugin, error)
+	New(envProvider commands.EnvironmentProvider) (Plugin, error)
 }
 
+// Plugin is the interface exposed by plugin instances.
 type Plugin interface {
 	// Name returns a human readable name for this plugin, like "Logging" or
 	// "Attack detector". This should match the value returned by the
