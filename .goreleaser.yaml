@@ -10,12 +10,12 @@ builds:
     env:
     - CGO_ENABLED=0
     binary: "relay"
-    main: ./relay/main.go
+    main: ./relay/main/main.go
   - id: "catcher"
     env:
     - CGO_ENABLED=0
     binary: "catcher"
-    main: ./catcher/main.go
+    main: ./catcher/main/main.go
 
 archives:
   -
