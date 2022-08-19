@@ -5,20 +5,17 @@
     # - go mod tidy
     # you may remove this if you don't need go generate
     # - go generate ./...
-before:
-  hooks:
-  - make prep
 builds:
   - id: "relay"
     env:
     - CGO_ENABLED=0
     binary: "relay"
-    main: ./go/src/relay/main/main.go
+    main: ./relay/main.go
   - id: "catcher"
     env:
     - CGO_ENABLED=0
     binary: "catcher"
-    main: ./go/src/catcher/main/main.go
+    main: ./catcher/main.go
 
 archives:
   -
