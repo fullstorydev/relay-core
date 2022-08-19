@@ -1,38 +1,20 @@
 name: Build and release
-
 on:
-  push:
-    tags:
-      - 'v*.*.*'
-
+ push:
+   tags:
+     - 'v*.*.*'
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@master
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - name: Set up go
-        uses: actions/setup-go@master
-      - name: Set ENVs
-        run: |
-          echo "##[set-env name=GIT_TAG;]$(echo $GITHUB_REF | cut -d'/' -f3)"
-          echo "##[set-env name=GITHUB_REPO_NAME;]$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)"
-          echo "##[set-env name=GITHUB_REPO_ORG;]$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f1)"
-          echo "##[set-env name=GOPATH;]$(dirname $GITHUB_WORKSPACE)/relay-core/go"
-          echo "##[add-path]$(dirname $GITHUB_WORKSPACE)/relay-core/go/bin"
-        shell: bash
-      - name: Show ENVs
-        run: |
-          echo "PATH: $PATH"
-          echo "GOPATH: $GOPATH"
-          echo "GIT_TAG: $GIT_TAG"
-          echo "GITHUB_REF: $GITHUB_REF"
-          echo "GITHUB_REPO_ORG: $GITHUB_REPO_ORG"
-          echo "GITHUB_REPO_NAME: $GITHUB_REPO_NAME"
-          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
-        shell: bash
+        uses: actions/setup-go@v3
       - name: Build and release
-        uses: goreleaser/goreleaser-action@master
+        uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
           args: release
@@ -41,27 +23,12 @@ jobs:
   build-github-docker-package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
-      - name: Set ENVs
-        run: |
-          echo "##[set-env name=GIT_TAG;]$(echo $GITHUB_REF | cut -d'/' -f3)"
-          echo "##[set-env name=GITHUB_REPO_NAME;]$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)"
-          echo "##[set-env name=GITHUB_REPO_ORG;]$(echo $GITHUB_REPOSITORY | cut -d'/' -f1)"
-        shell: bash
-      - name: Show ENVs
-        run: |
-          echo "PATH: $PATH"
-          echo "GOPATH: $GOPATH"
-          echo "GIT_TAG: $GIT_TAG"
-          echo "GITHUB_REF: $GITHUB_REF"
-          echo "GITHUB_REPO_NAME: $GITHUB_REPO_NAME"
-          echo "GITHUB_REPO_ORG: $GITHUB_REPO_ORG"
-        shell: bash
+      - uses: actions/checkout@v3
       - name: Publish to registry
-        uses: elgohr/Publish-Docker-Github-Action@master
+        uses: elgohr/Publish-Docker-Github-Action@v4
         with:
-          name: ${{ env.GITHUB_REPO_ORG }}/${{ env.GITHUB_REPO_NAME }}/${{ env.GITHUB_REPO_NAME }}
+          name: ${{ github.event.repository.full_name }}/${{ github.event.repository.name }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
-          tags: "${{ env.GIT_TAG }}"
+          tags: ${{ github.ref_name }}
