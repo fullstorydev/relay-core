@@ -13,16 +13,13 @@ import (
 	"regexp"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
+	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var (
 	Factory    pathsPluginFactory
 	logger     = log.New(os.Stdout, "[traffic-paths] ", 0)
 	pluginName = "Paths"
-
-	matchVar       = "TRAFFIC_PATHS_MATCH"       // A go regexp string or empty
-	replacementVar = "TRAFFIC_PATHS_REPLACEMENT" // A go repl string or empty
 )
 
 type pathsPluginFactory struct{}
@@ -31,37 +28,34 @@ func (f pathsPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f pathsPluginFactory) New(
-	envProvider commands.EnvironmentProvider,
-) (traffic.Plugin, error) {
-	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
-		{EnvKey: matchVar},
-		{EnvKey: replacementVar},
-	})
-	if err != nil {
+func (f pathsPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
+	plugin := &pathsPlugin{}
+
+	// Read the replacement value, which is just a literal string. If it's not
+	// present, we don't have anything to do, so we just disable the plugin.
+	if replacement, ok := env.LookupOptional("TRAFFIC_PATHS_REPLACEMENT"); !ok {
+		return nil, nil
+	} else {
+		plugin.replacement = replacement
+	}
+
+	// Read the match value, which is a Go regular expression. Since we know a
+	// replacement value was specified, we treat the match value as required;
+	// one doesn't make sense without the other.
+	if err := env.ParseRequired("TRAFFIC_PATHS_MATCH", func(key string, value string) error {
+		if match, err := regexp.Compile(value); err != nil {
+			return fmt.Errorf("Could not compile regular expression: %v", err)
+		} else {
+			plugin.match = match
+			return nil
+		}
+	}); err != nil {
 		return nil, err
 	}
 
-	match := env[matchVar]
-	replacement := env[replacementVar]
-	if len(match) == 0 && len(replacement) == 0 {
-		return nil, nil
-	}
-	if len(match) == 0 {
-		return nil, fmt.Errorf("Paths plugin has %v but not %v", replacementVar, matchVar)
-	}
+	logger.Printf("Paths plugin will replace all \"%s\" with \"%s\"", plugin.match, plugin.replacement)
 
-	matchRE, err := regexp.Compile(match)
-	if err != nil {
-		return nil, fmt.Errorf("Could not compile %v regular expression: %v", matchVar, err)
-	}
-
-	logger.Printf("Paths plugin will replace all \"%s\" with \"%s\"", matchRE, replacement)
-
-	return &pathsPlugin{
-		match:       matchRE,
-		replacement: replacement,
-	}, nil
+	return plugin, nil
 }
 
 type pathsPlugin struct {

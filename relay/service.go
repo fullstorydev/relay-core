@@ -5,38 +5,41 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
+	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var MonitorPath = "/__relay__up__/"
 
-/*
-Service holds the ServMux for the monitoring page as well as traffic plugins
-*/
-type Service struct {
-	listener       net.Listener
-	trafficService *TrafficService
-	mux            *http.ServeMux
+type ServiceConfig struct {
+	Port int // The port that the relay service should listen on.
 }
 
-func NewService(trafficPlugins []traffic.Plugin) *Service {
+func NewDefaultServiceConfig() *ServiceConfig {
+	return &ServiceConfig{}
+}
+
+// Service implements the relay service, exposing both the traffic handler and
+// the monitoring page.
+type Service struct {
+	listener net.Listener
+	mux      *http.ServeMux
+}
+
+func NewService(relayConfig *traffic.RelayConfig, trafficPlugins []traffic.Plugin) *Service {
 	mux := http.NewServeMux()
 
-	// Write a simple page for monitoring
+	// Write a simple page for monitoring.
+	// TODO add a control/monitoring service
 	mux.HandleFunc(MonitorPath, func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Add("Content-Type", "text/html")
 		response.Write([]byte("<html><body>Up</body></html>"))
 	})
 
-	// Handle everything else with traffic plugins
-	trafficService := NewTrafficService(trafficPlugins)
-	mux.Handle("/", trafficService)
-
-	// TODO add a control/monitoring service
+	// Set up the traffic handler.
+	mux.Handle("/", traffic.NewHandler(relayConfig, trafficPlugins))
 
 	return &Service{
-		trafficService: trafficService,
-		mux:            mux,
+		mux: mux,
 	}
 }
 

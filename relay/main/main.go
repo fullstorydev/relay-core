@@ -3,40 +3,38 @@ package main
 import (
 	"log"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/fullstorydev/relay-core/relay"
 	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic/paths-plugin"
+	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var logger = log.New(os.Stdout, "[relay] ", 0)
 
-// These are the env variables in play
-var RelayPortVar = "RELAY_PORT"
+// The default set of traffic plugins.
+var DefaultPlugins = []traffic.PluginFactory{
+	paths_plugin.Factory,
+	content_blocker_plugin.Factory,
+}
 
 func main() {
-	envProvider := commands.NewDefaultEnvironmentProvider()
-	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
-		{
-			EnvKey:   RelayPortVar,
-			Required: true,
-		},
-	})
+	envProvider, err := commands.NewDefaultEnvironmentProvider()
 	if err != nil {
 		logger.Println(err)
 		os.Exit(1)
 	}
 
-	parsedPort, err := strconv.ParseInt(env[RelayPortVar], 10, 32)
+	env := commands.NewEnvironment(envProvider)
+	config, err := relay.ReadConfig(env)
 	if err != nil {
-		logger.Printf("Error parsing relay port: \"%v\"", env[RelayPortVar])
+		logger.Println(err)
 		os.Exit(1)
 	}
-	relayPort := int(parsedPort)
 
-	trafficPlugins, err := plugins.Load(plugins.Default, envProvider)
+	trafficPlugins, err := traffic.LoadPlugins(DefaultPlugins, env)
 	if err != nil {
 		logger.Println(err)
 		os.Exit(1)
@@ -47,8 +45,8 @@ func main() {
 		logger.Println("\tTraffic:", tp.Name())
 	}
 
-	relayService := relay.NewService(trafficPlugins)
-	if err := relayService.Start("0.0.0.0", relayPort); err != nil {
+	relayService := relay.NewService(config.Relay, trafficPlugins)
+	if err := relayService.Start("0.0.0.0", config.Service.Port); err != nil {
 		panic("Could not start catcher service: " + err.Error())
 	}
 	logger.Println("Relay listening on port", relayService.Port())

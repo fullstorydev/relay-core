@@ -1,4 +1,4 @@
-package relay_plugin
+package traffic
 
 import (
 	"bytes"
@@ -10,180 +10,84 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
-
-const DefaultMaxBodySize int64 = 1024 * 2048 // 2MB
 
 const RelayVersionHeaderName = "X-Relay-Version"
 const RelayVersion = "v0.1.3" // TODO set this from tags automatically during git commit
 
-var (
-	Factory    relayPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-relay] ", 0)
-	pluginName = "Relay"
+var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 
-	hasPort                       = regexp.MustCompile(`:\d+$`)
-	trafficRelayTargetVar         = "TRAFFIC_RELAY_TARGET"
-	trafficRelayCookiesVar        = "TRAFFIC_RELAY_COOKIES"
-	trafficRelayMaxBodySizeVar    = "TRAFFIC_RELAY_MAX_BODY_SIZE"
-	trafficRelayOriginOverrideVar = "TRAFFIC_RELAY_ORIGIN_OVERRIDE"
-	trafficRelaySpecials          = "TRAFFIC_RELAY_SPECIALS"
-)
-
-type relayPluginFactory struct{}
-
-func (f relayPluginFactory) Name() string {
-	return pluginName
+// Handler handles HTTP traffic sent to the relay. It handles the core relaying
+// process itself, and can be extended using plugins to add additional
+// functionality.
+type Handler struct {
+	config    *RelayConfig
+	plugins   []Plugin
+	transport *http.Transport
 }
 
-func (f relayPluginFactory) New(
-	envProvider commands.EnvironmentProvider,
-) (traffic.Plugin, error) {
-	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
-		{
-			EnvKey:   trafficRelayTargetVar,
-			Required: true,
+func NewHandler(config *RelayConfig, trafficPlugins []Plugin) *Handler {
+	return &Handler{
+		config:  config,
+		plugins: trafficPlugins,
+		transport: &http.Transport{
+			TLSClientConfig: &tls.Config{},
+			Proxy:           http.ProxyFromEnvironment,
+			IdleConnTimeout: 2 * time.Second, // TODO set from configs
 		},
-		{EnvKey: trafficRelaySpecials},
-		{EnvKey: trafficRelayCookiesVar},
-		{EnvKey: trafficRelayMaxBodySizeVar},
-		{EnvKey: trafficRelayOriginOverrideVar},
-	})
-	if err != nil {
-		return nil, err
 	}
+}
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{},
-		Proxy:           http.ProxyFromEnvironment,
-		IdleConnTimeout: 2 * time.Second, // TODO set from configs
-	}
-	plugin := &relayPlugin{
-		transport:      transport,
-		targetScheme:   "",
-		targetHost:     "",
-		specials:       []special{},
-		originOverride: "",
-		relayedCookies: map[string]bool{},
-		maxBodySize:    DefaultMaxBodySize,
-	}
-
-	targetVar := env[trafficRelayTargetVar]
-	targetURL, err := url.Parse(targetVar)
-	if err != nil {
-		return nil, fmt.Errorf("Could not parse %v environment variable URL: %v", trafficRelayTargetVar, targetVar)
-	}
-	plugin.targetScheme = targetURL.Scheme
-	plugin.targetHost = targetURL.Host
-
-	specialsVar := env[trafficRelaySpecials]
-	if len(specialsVar) > 0 {
-		specialsTokens := strings.Split(specialsVar, " ")
-		if len(specialsTokens)%2 != 0 {
-			return nil, fmt.Errorf("Could not parse %v environment variable: %v", trafficRelaySpecials, specialsTokens)
-		}
-		for i := 0; i < len(specialsTokens); i += 2 {
-			matchVar := specialsTokens[i]
-			replacementString := specialsTokens[i+1]
-			matchRE, err := regexp.Compile(matchVar)
-			if err != nil {
-				return nil, fmt.Errorf("Could not compile regular expression \"%v\" in %v: %v", matchVar, trafficRelaySpecials, err)
-			}
-			special := special{
-				matchRE,
-				replacementString,
-			}
-			plugin.specials = append(plugin.specials, special)
-			logger.Printf("Relaying special expression \"%v\" to \"%v\"", special.match, special.replacement)
+func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	serviced := false
+	for _, trafficPlugin := range handler.plugins {
+		if trafficPlugin.HandleRequest(response, request, serviced) {
+			serviced = true
 		}
 	}
 
-	originOverrideVar := env[trafficRelayOriginOverrideVar]
-	if len(originOverrideVar) > 0 {
-		plugin.originOverride = originOverrideVar
+	if handler.HandleRequest(response, request, serviced) {
+		serviced = true
 	}
 
-	cookiesVar := env[trafficRelayCookiesVar]
-	if len(cookiesVar) > 0 {
-		for _, cookieName := range strings.Split(cookiesVar, " ") { // Should we support spaces?
-			plugin.relayedCookies[cookieName] = true
-		}
+	if serviced {
+		logger.Printf("%s %s %s: serviced", request.Method, request.Host, request.URL)
+	} else {
+		logger.Printf("%s %s %s: not serviced", request.Method, request.Host, request.URL)
+		http.NotFound(response, request)
 	}
-
-	maxBodySizeVar := env[trafficRelayMaxBodySizeVar]
-	if len(maxBodySizeVar) > 0 {
-		maxBodySize, err := strconv.ParseInt(maxBodySizeVar, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("Error parsing TRAFFIC_RELAY_MAX_BODY_SIZE environment variable: %v", err)
-		}
-		plugin.maxBodySize = maxBodySize
-	}
-
-	return plugin, nil
 }
 
-type special struct {
-	match       *regexp.Regexp
-	replacement string
-}
-
-type relayPlugin struct {
-	transport      *http.Transport
-	targetScheme   string          // http|https
-	targetHost     string          // e.g. 192.168.0.1:1234
-	specials       []special       // path patterns that are mapped to fully qualified URLs
-	originOverride string          // default to passing Origin header as-is, but set to override
-	relayedCookies map[string]bool // the name of cookies that should be relayed
-	maxBodySize    int64           // maximum length in bytes of relayed bodies
-}
-
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Forwarded
-type forwarded struct {
-	byHeader    string // The interface where the request came in to the proxy server.
-	forHeader   string // The client that initiated the request and subsequent proxies in a chain of proxies.
-	hostHeader  string // The Host request header field as received by the proxy.
-	protoHeader string // Indicates which protocol was used to make the request (typically "http" or "https").
-}
-
-func (plug relayPlugin) Name() string {
-	return pluginName
-}
-
-func (plug relayPlugin) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool) bool {
+func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool) bool {
 	if serviced {
 		return false
 	}
-	if plug.targetScheme == "" || plug.targetHost == "" {
+	if handler.config.TargetScheme == "" || handler.config.TargetHost == "" {
 		return false
 	}
 	if clientRequest.Header.Get("Upgrade") == "websocket" {
-		return plug.handleUpgrade(clientResponse, clientRequest)
+		return handler.handleUpgrade(clientResponse, clientRequest)
 	} else {
-		return plug.handleHttp(clientResponse, clientRequest)
+		return handler.handleHttp(clientResponse, clientRequest)
 	}
 }
 
-func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
-	clientRequest.URL.Scheme = plug.targetScheme
-	clientRequest.URL.Host = plug.targetHost
-	clientRequest.Host = plug.targetHost
+func (handler *Handler) prepRelayRequest(clientRequest *http.Request) {
+	clientRequest.URL.Scheme = handler.config.TargetScheme
+	clientRequest.URL.Host = handler.config.TargetHost
+	clientRequest.Host = handler.config.TargetHost
 
-	if len(plug.specials) > 0 {
-		for _, special := range plug.specials {
-			if special.match.Match([]byte(clientRequest.URL.Path)) == false {
+	if len(handler.config.SpecialPaths) > 0 {
+		for _, special := range handler.config.SpecialPaths {
+			if special.Match.Match([]byte(clientRequest.URL.Path)) == false {
 				continue
 			}
-			urlVal := special.match.ReplaceAllString(clientRequest.URL.Path, special.replacement)
+			urlVal := special.Match.ReplaceAllString(clientRequest.URL.Path, special.Replacement)
 			newURL, err := url.Parse(urlVal)
 			if err != nil {
-				logger.Printf("Failed to create URL for special %v: %v", special.match, err)
+				logger.Printf("Failed to create URL for special %v: %v", special.Match, err)
 			} else {
 				clientRequest.URL.Scheme = newURL.Scheme
 				clientRequest.URL.Host = newURL.Host
@@ -191,19 +95,19 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 				clientRequest.URL.Path = newURL.Path
 			}
 		}
-	} else if len(plug.originOverride) > 0 {
+	} else if len(handler.config.OriginOverride) > 0 {
 		clientRequest.Header.Set(
 			"Origin",
-			fmt.Sprintf("%v://%v", plug.targetScheme, plug.originOverride),
+			fmt.Sprintf("%v://%v", handler.config.TargetScheme, handler.config.OriginOverride),
 		)
 	}
-	if len(plug.relayedCookies) == 0 {
+	if len(handler.config.RelayedCookies) == 0 {
 		clientRequest.Header.Del("Cookie")
 	} else {
 		var cookieString strings.Builder
 		first := true
 		for _, cookie := range clientRequest.Cookies() {
-			if _, ok := plug.relayedCookies[cookie.Name]; ok == false {
+			if _, ok := handler.config.RelayedCookies[cookie.Name]; ok == false {
 				continue
 			}
 			if first == false {
@@ -227,14 +131,14 @@ func (plug *relayPlugin) prepRelayRequest(clientRequest *http.Request) {
 	clientRequest.Header.Add(RelayVersionHeaderName, RelayVersion)
 }
 
-func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
-	plug.prepRelayRequest(clientRequest)
+func (handler *Handler) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
+	handler.prepRelayRequest(clientRequest)
 	if !clientRequest.URL.IsAbs() {
 		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
 		return true
 	}
 
-	targetResponse, err := plug.transport.RoundTrip(clientRequest)
+	targetResponse, err := handler.transport.RoundTrip(clientRequest)
 	if err != nil {
 		logger.Printf("Cannot read response from server %v", err)
 		return false
@@ -248,7 +152,7 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 		}
 	}
 
-	if targetResponse.ContentLength > plug.maxBodySize {
+	if targetResponse.ContentLength > handler.config.MaxBodySize {
 		clientResponse.WriteHeader(http.StatusServiceUnavailable)
 		clientResponse.Write([]byte("Response body content-length was too large"))
 	} else if targetResponse.ContentLength > 0 {
@@ -258,7 +162,7 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 		}
 	} else if targetResponse.ContentLength < 0 {
 		clientResponse.WriteHeader(targetResponse.StatusCode)
-		if _, err := io.CopyN(clientResponse, targetResponse.Body, plug.maxBodySize); err != nil {
+		if _, err := io.CopyN(clientResponse, targetResponse.Body, handler.config.MaxBodySize); err != nil {
 			logger.Printf("Error relaying response body with unknown content-length: %s", err)
 		}
 	} else {
@@ -267,8 +171,8 @@ func (plug *relayPlugin) handleHttp(clientResponse http.ResponseWriter, clientRe
 	return true
 }
 
-func (plug *relayPlugin) handleUpgrade(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
-	plug.prepRelayRequest(clientRequest)
+func (handler *Handler) handleUpgrade(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
+	handler.prepRelayRequest(clientRequest)
 	if !clientRequest.URL.IsAbs() {
 		logger.Println("Url was not absolute", clientRequest.URL.Host)
 		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)

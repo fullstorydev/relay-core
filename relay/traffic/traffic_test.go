@@ -1,4 +1,4 @@
-package relay_plugin_test
+package traffic_test
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
-	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/test"
 	"golang.org/x/net/websocket"
 )
@@ -37,7 +36,7 @@ func TestBasicRelay(t *testing.T) {
 
 func TestOriginOverride(t *testing.T) {
 	newOrigin := "example.com"
-	env := commands.Environment{
+	env := map[string]string{
 		"TRAFFIC_RELAY_ORIGIN_OVERRIDE": newOrigin,
 	}
 
@@ -63,7 +62,7 @@ func TestOriginOverride(t *testing.T) {
 }
 
 func TestMaxBodySize(t *testing.T) {
-	env := commands.Environment{
+	env := map[string]string{
 		"TRAFFIC_RELAY_MAX_BODY_SIZE": fmt.Sprintf("%v", 5),
 	}
 
