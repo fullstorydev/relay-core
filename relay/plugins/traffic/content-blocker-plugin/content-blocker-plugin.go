@@ -52,7 +52,7 @@ var (
 	pluginName = "Content-Blocker"
 
 	PluginVersionHeaderName = "X-Relay-Content-Blocker-Version"
-	PluginVersion           = "v0.1.3"
+	PluginVersion           = "v0.2.0"
 )
 
 type contentBlockerPluginFactory struct{}
