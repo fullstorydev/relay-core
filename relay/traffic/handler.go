@@ -15,7 +15,7 @@ import (
 )
 
 const RelayVersionHeaderName = "X-Relay-Version"
-const RelayVersion = "v0.1.3" // TODO set this from tags automatically during git commit
+const RelayVersion = "v0.2.0" // TODO set this from tags automatically during git commit
 
 var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 

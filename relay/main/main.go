@@ -21,12 +21,7 @@ var DefaultPlugins = []traffic.PluginFactory{
 }
 
 func main() {
-	envProvider, err := commands.NewDefaultEnvironmentProvider()
-	if err != nil {
-		logger.Println(err)
-		os.Exit(1)
-	}
-
+	envProvider := commands.NewDefaultEnvironmentProvider()
 	env := commands.NewEnvironment(envProvider)
 	config, err := relay.ReadConfig(env)
 	if err != nil {

@@ -16,9 +16,9 @@ Somewhat annoyingly, GitHub requires authentication in order to use even public 
 
 Once Docker is authenticated with GitHub you can pull the image in the usual way:
 
-	docker pull docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.1.2
+	docker pull docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.2.0
 
-You probably want the latest version so check for a version greater than v0.1.2.
+You probably want the latest version so check for a version greater than v0.2.0.
 
 ### Building a local Docker image
 
@@ -33,29 +33,30 @@ To create an image:
 
 Pre-built:
 
-	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.1.2
+	docker run -e "RELAY_PORT=8990" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.2.0
 
-(update the `v0.1.2` if you're using a different version)
+(update the `v0.2.0` if you're using a different version)
 
 Locally built:
 
-	docker run -e "RELAY_PORT=8990" -e "RELAY_PLUGINS_PATH=/dist/plugins/" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d relay:local-v0
+	docker run -e "RELAY_PORT=8990" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d relay:local-v0
 
 You'll want to change the various environment variables to suite your scenario, as documented in the [example dotenv file](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example).
 
-## Using binaries
+## Local Development
 
-While we provide [pre-built 'relay' binaries](https://github.com/fullstorydev/relay-core/releases) for each version, to run the Relay you also need a specific directory hierarchy containing [plugins](plugins.md). The default build creates `relay-core/dist/` containing both binary and plugins so the easiest way to get started is:
+To build:
 
-	cd relay-core/
 	make
-	# ... build output ...
-	cd dist/
+
+To run tests:
+
+	make test
+
+To run the relay locally after a successful build:
+
+	cd dist
 	./relay
-
-If you already have a distribution directory with the correct plugins then you can drop in new, pre-built binaries as they're released.
-
-The pre-built Docker images already contain the plugins so if building is annoying then you might try the Docker route.
 
 ## Configuration
 

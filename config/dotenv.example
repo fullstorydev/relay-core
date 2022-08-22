@@ -4,9 +4,6 @@
 # The port on which the relay service will listen (no default)
 RELAY_PORT=8086
 
-# The file path to the directory containing relay plugins (defaults to ./plugins)
-# RELAY_PLUGINS_PATH=./plugins
-
 # The default URL for the traffic relay plugin to target (no default)
 TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346
 
