@@ -28,3 +28,19 @@ TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346
 # And this is a go repl string:
 # TRAFFIC_PATHS_REPLACEMENT=/wow-${1}/
 # See https://golang.org/pkg/regexp/#Regexp.Expand for more info
+
+# The content blocker plugin allows you to block content from headers or request
+# bodies. You can control it using the following environment variables:
+# - TRAFFIC_EXCLUDE_BODY_CONTENT: If set, a regular expression that will be
+# evaluated against request bodies. Matching content will be completely deleted
+# from the request.
+# - TRAFFIC_MASK_BODY_CONTENT: If set, a regular expression that will be
+# evaluated against request bodies. Matching content will be replaced with
+# asterisks.
+# - TRAFFIC_EXCLUDE_HEADER_CONTENT: Like TRAFFIC_EXCLUDE_BODY_CONTENT, but
+# applies to header values.
+# - TRAFFIC_MASK_HEADER_CONTENT: Like TRAFFIC_MASK_BODY_CONTENT, but applies to
+# header values.
+#
+# As an example, to block IP-like strings from request bodies you could use:
+# TRAFFIC_MASK_BODY_CONTENT=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+
