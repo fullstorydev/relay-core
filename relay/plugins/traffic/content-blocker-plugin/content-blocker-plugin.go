@@ -43,7 +43,7 @@ import (
 	"strconv"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
+	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var (
@@ -53,11 +53,6 @@ var (
 
 	PluginVersionHeaderName = "X-Relay-Content-Blocker-Version"
 	PluginVersion           = "v0.1.3"
-
-	excludeBodyContentVar   = "TRAFFIC_EXCLUDE_BODY_CONTENT"   // A go regexp string or empty
-	maskBodyContentVar      = "TRAFFIC_MASK_BODY_CONTENT"      // A go regexp string or empty
-	excludeHeaderContentVar = "TRAFFIC_EXCLUDE_HEADER_CONTENT" // A go regexp string or empty
-	maskHeaderContentVar    = "TRAFFIC_MASK_HEADER_CONTENT"    // A go regexp string or empty
 )
 
 type contentBlockerPluginFactory struct{}
@@ -66,24 +61,12 @@ func (f contentBlockerPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f contentBlockerPluginFactory) New(
-	envProvider commands.EnvironmentProvider,
-) (traffic.Plugin, error) {
-	env, err := commands.GetEnvironmentOrPrintUsage(envProvider, []commands.EnvVar{
-		{EnvKey: excludeBodyContentVar},
-		{EnvKey: maskBodyContentVar},
-		{EnvKey: excludeHeaderContentVar},
-		{EnvKey: maskHeaderContentVar},
-	})
-	if err != nil {
-		return nil, err
-	}
-
+func (f contentBlockerPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
 	bodyBlockers, err := newContentBlockerList(
 		env,
 		"body",
-		excludeBodyContentVar,
-		maskBodyContentVar,
+		"TRAFFIC_EXCLUDE_BODY_CONTENT",
+		"TRAFFIC_MASK_BODY_CONTENT",
 	)
 	if err != nil {
 		return nil, err
@@ -92,8 +75,8 @@ func (f contentBlockerPluginFactory) New(
 	headerBlockers, err := newContentBlockerList(
 		env,
 		"header",
-		excludeHeaderContentVar,
-		maskHeaderContentVar,
+		"TRAFFIC_EXCLUDE_HEADER_CONTENT",
+		"TRAFFIC_MASK_HEADER_CONTENT",
 	)
 	if err != nil {
 		return nil, err
@@ -218,23 +201,32 @@ func (mode contentBlockerMode) String() string {
 // newContentBlockerList is a helper that creates a group of related
 // contentBlocker instances as a single operation.
 func newContentBlockerList(
-	env map[string]string,
+	env *commands.Environment,
 	listName string,
 	excludeVar string,
 	maskVar string,
 ) ([]*contentBlocker, error) {
 	var blockers []*contentBlocker
 
-	if blocker, err := newContentBlocker(env, excludeVar, excludeMode); err != nil {
-		return nil, err
-	} else if blocker != nil {
-		blockers = append(blockers, blocker)
+	addContentBlockerWithMode := func(mode contentBlockerMode) func(key string, value string) error {
+		return func(key string, value string) error {
+			if regexp, err := regexp.Compile(value); err != nil {
+				return fmt.Errorf("Could not compile regular expression: %v", err)
+			} else {
+				blockers = append(blockers, &contentBlocker{
+					mode:   mode,
+					regexp: regexp,
+				})
+				return nil
+			}
+		}
 	}
 
-	if blocker, err := newContentBlocker(env, maskVar, maskMode); err != nil {
+	if err := env.ParseOptional(excludeVar, addContentBlockerWithMode(excludeMode)); err != nil {
 		return nil, err
-	} else if blocker != nil {
-		blockers = append(blockers, blocker)
+	}
+	if err := env.ParseOptional(maskVar, addContentBlockerWithMode(maskMode)); err != nil {
+		return nil, err
 	}
 
 	for _, blocker := range blockers {
@@ -251,27 +243,6 @@ var maskSymbol = []byte("*")
 type contentBlocker struct {
 	mode   contentBlockerMode
 	regexp *regexp.Regexp
-}
-
-func newContentBlocker(
-	env map[string]string,
-	varName string,
-	mode contentBlockerMode,
-) (*contentBlocker, error) {
-	pattern := env[varName]
-	if pattern == "" {
-		return nil, nil
-	}
-
-	regexp, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil, fmt.Errorf("Could not compile %v regular expression: %v", varName, err)
-	}
-
-	return &contentBlocker{
-		mode:   mode,
-		regexp: regexp,
-	}, nil
 }
 
 func (b *contentBlocker) Block(content []byte) []byte {

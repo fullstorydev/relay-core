@@ -8,17 +8,16 @@ import (
 
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
-	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
 	"github.com/fullstorydev/relay-core/relay/test"
+	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 func TestContentBlockerBlocksContent(t *testing.T) {
 	testCases := []contentBlockerTestCase{
 		{
 			desc: "Body content can be excluded",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_EXCLUDE_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 			},
 			originalBody: `{ "content": "Excluded IP address = 215.1.0.335." }`,
@@ -26,7 +25,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Body content can be masked",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_MASK_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 			},
 			originalBody: `{ "content": "Excluded IP address = 215.1.0.335." }`,
@@ -34,7 +33,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Header content can be excluded",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_EXCLUDE_HEADER_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 			},
 			originalHeaders: map[string]string{
@@ -46,7 +45,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Header content can be masked",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_MASK_HEADER_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 			},
 			originalHeaders: map[string]string{
@@ -58,7 +57,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Header values are blocked but header names are not",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_EXCLUDE_HEADER_CONTENT": `(?i)BAR`,
 				"TRAFFIC_MASK_HEADER_CONTENT":    `(?i)FOO`,
 			},
@@ -73,7 +72,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Exclusion takes priority over masking",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_EXCLUDE_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 				"TRAFFIC_MASK_BODY_CONTENT":    `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 			},
@@ -82,7 +81,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Complex configurations are supported",
-			env: commands.Environment{
+			env: map[string]string{
 				"TRAFFIC_EXCLUDE_BODY_CONTENT":   `(?i)EXCLUDED`,
 				"TRAFFIC_MASK_BODY_CONTENT":      `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 				"TRAFFIC_EXCLUDE_HEADER_CONTENT": `(?i)DELETED`,
@@ -109,7 +108,7 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 }
 
 func TestContentBlockerBlocksWebsockets(t *testing.T) {
-	env := commands.Environment{
+	env := map[string]string{
 		"TRAFFIC_MASK_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
 	}
 	plugins := []traffic.PluginFactory{
@@ -148,7 +147,7 @@ func TestContentBlockerBlocksWebsockets(t *testing.T) {
 
 type contentBlockerTestCase struct {
 	desc            string
-	env             commands.Environment
+	env             map[string]string
 	originalBody    string
 	expectedBody    string
 	originalHeaders map[string]string

@@ -1,40 +1,22 @@
-package plugins
+package traffic
 
 import (
 	"fmt"
-	"log"
-	"os"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/logging-plugin"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/paths-plugin"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/relay-plugin"
 )
 
-var logger = log.New(os.Stdout, "[plugin] ", 0)
-
-// The default set of traffic plugins.
-var Default = []traffic.PluginFactory{
-	paths_plugin.Factory,
-	content_blocker_plugin.Factory,
-	relay_plugin.Factory,
-	logging_plugin.Factory,
-}
-
-// Load creates and configures a set of plugins. Most relay functionality
-// is implemented via these plugins.
-func Load(
-	pluginFactories []traffic.PluginFactory,
-	envProvider commands.EnvironmentProvider,
-) ([]traffic.Plugin, error) {
-	trafficPlugins := []traffic.Plugin{}
+// Load creates and configures a set of traffic plugins.
+func LoadPlugins(
+	pluginFactories []PluginFactory,
+	env *commands.Environment,
+) ([]Plugin, error) {
+	trafficPlugins := []Plugin{}
 
 	for _, factory := range pluginFactories {
 		logger.Printf("Loading plugin: %s\n", factory.Name())
 
-		plugin, err := factory.New(envProvider)
+		plugin, err := factory.New(env)
 		if err != nil {
 			return nil, fmt.Errorf("Traffic plugin \"%v\" configuration error: %v", factory.Name(), err)
 		}

@@ -1,14 +1,10 @@
 package traffic
 
 import (
-	"log"
 	"net/http"
-	"os"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
 )
-
-var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 
 // PluginFactory is the interface that the relay uses to create plugin
 // instances.
@@ -19,11 +15,11 @@ type PluginFactory interface {
 
 	// New configures and returns an instance of this plugin, or an error if
 	// configuration failed. Configuration options are read from the given
-	// environment provider.
+	// environment.
 	//
 	// Factories may return nil if the plugin should be inactive given the
 	// provided configuration.
-	New(envProvider commands.EnvironmentProvider) (Plugin, error)
+	New(envProvider *commands.Environment) (Plugin, error)
 }
 
 // Plugin is the interface exposed by plugin instances.
