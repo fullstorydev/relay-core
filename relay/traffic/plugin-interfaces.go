@@ -19,7 +19,7 @@ type PluginFactory interface {
 	//
 	// Factories may return nil if the plugin should be inactive given the
 	// provided configuration.
-	New(envProvider *commands.Environment) (Plugin, error)
+	New(env *commands.Environment) (Plugin, error)
 }
 
 // Plugin is the interface exposed by plugin instances.
