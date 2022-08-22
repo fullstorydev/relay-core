@@ -1,10 +1,8 @@
-FROM ubuntu:22.04 AS builder
-RUN apt-get update && \
-    apt-get install -y \
-      build-essential \
-      ca-certificates \
-      golang \
-      golang-1.18
+FROM alpine:3.16 AS builder
+RUN apk add --no-cache --update \
+  alpine-sdk \
+  ca-certificates \
+  go
 ADD ./catcher ./catcher
 ADD ./relay ./relay
 ADD ./go.mod .
@@ -13,9 +11,8 @@ ADD ./Makefile .
 RUN set -ex && \
 	make
 
-FROM ubuntu:22.04
-RUN apt-get update && \
-    apt-get install -y \
-      ca-certificates
+FROM alpine:3.16
+RUN apk add --no-cache --update \
+  ca-certificates
 COPY --from=builder /dist /dist
 ENTRYPOINT [ "/dist/relay" ]
