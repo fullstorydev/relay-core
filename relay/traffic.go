@@ -3,25 +3,25 @@ package relay
 import (
 	"net/http"
 
-	"github.com/fullstorydev/relay-core/relay/plugins"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic"
 )
 
 /*
 TrafficService services HTTP requests by calling through to traffic plugins
 */
 type TrafficService struct {
-	plugins *plugins.Plugins
+	plugins []traffic.Plugin
 }
 
-func NewTrafficService(plugs *plugins.Plugins) *TrafficService {
+func NewTrafficService(trafficPlugins []traffic.Plugin) *TrafficService {
 	return &TrafficService{
-		plugins: plugs,
+		plugins: trafficPlugins,
 	}
 }
 
 func (service *TrafficService) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	serviced := false
-	for _, trafficPlugin := range service.plugins.Traffic {
+	for _, trafficPlugin := range service.plugins {
 		if trafficPlugin.HandleRequest(response, request, serviced) {
 			serviced = true
 		}

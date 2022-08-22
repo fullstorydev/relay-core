@@ -14,24 +14,46 @@ type EnvVar struct {
 	EnvKey     string
 	Required   bool
 	DefaultVal string
-	IsDir      bool
 }
 
 type Environment map[string]string
 
-// GetEnvironment tries to read environment variables from various sources. In
-// order of precedence:
-//  * OS environment variables.
-//  * Values from any .env file that may exist.
-//  * Default values specified by the caller.
-// It returns an error if one or more expected variables are not present in any
-// of the sources.
-func GetEnvironment(vars []EnvVar) (Environment, error) {
-	env := map[string]string{}
+// EnvironmentProvider is an interface used to retrieve a string-based,
+// key-value set of configuration options.
+type EnvironmentProvider interface {
+	// Read attempts to read the values of the provided variables from the
+	// underlying source. If a value for a variable is found, it's written into
+	// the provided Environment.
+	Read(vars []EnvVar, env Environment)
+}
+
+// GetEnvironmentOrPrintUsage reads the requested variables from an environment
+// provider. If a required variable is not found, usage information is printed
+// to stdout and an error is returned; otherwise, a populated Environment
+// containing the values of the requested variables is returned.
+func GetEnvironmentOrPrintUsage(
+	provider EnvironmentProvider,
+	vars []EnvVar,
+) (Environment, error) {
+	env := Environment{}
 	setupDefaultValues(vars, env)
-	readDotEnv(vars, env)
-	readEnvironment(vars, env)
-	return env, checkEnvironment(vars, env)
+	provider.Read(vars, env)
+
+	if err := checkEnvironment(vars, env); err != nil {
+		printEnvUsage(vars, env)
+		return nil, err
+	}
+
+	return env, nil
+}
+
+func setupDefaultValues(vars []EnvVar, env Environment) {
+	for _, variable := range vars {
+		if variable.DefaultVal == "" {
+			continue
+		}
+		env[variable.EnvKey] = variable.DefaultVal
+	}
 }
 
 func checkEnvironment(vars []EnvVar, env Environment) error {
@@ -44,17 +66,12 @@ func checkEnvironment(vars []EnvVar, env Environment) error {
 		if found == false || len(envVal) == 0 {
 			return errors.New("Required environment variable is missing: " + variable.EnvKey)
 		}
-
-		if variable.IsDir && checkDir(envVal) != nil {
-			logger.Println("Could not read " + variable.EnvKey + " directory: " + envVal)
-			return errors.New("Invalid directory: " + envVal)
-		}
 	}
 
 	return nil
 }
 
-func PrintEnvUsage(vars []EnvVar, env Environment) {
+func printEnvUsage(vars []EnvVar, env Environment) {
 	logger.Println("Required configuration variables via .env or environment:")
 	for _, variable := range vars {
 		if variable.Required == false {
@@ -83,21 +100,26 @@ func PrintEnvUsage(vars []EnvVar, env Environment) {
 	}
 }
 
-func checkDir(dirPath string) error {
-	pathInfo, err := os.Stat(dirPath)
-	if err != nil {
-		return err
-	}
-	if pathInfo.IsDir() == false {
-		return errors.New("Not a directory")
-	}
-	return nil
+// DefaultEnvironmentProvider tries to read environment variables from various
+// external sources. In order of precedence:
+//  * OS environment variables.
+//  * Values from any .env file that may exist.
+type DefaultEnvironmentProvider struct {
+}
+
+func NewDefaultEnvironmentProvider() EnvironmentProvider {
+	return &DefaultEnvironmentProvider{}
+}
+
+func (provider *DefaultEnvironmentProvider) Read(vars []EnvVar, env Environment) {
+	provider.readDotEnv(vars, env)
+	provider.readEnvironment(vars, env)
 }
 
 // readDotEnv reads environment variables from a .env file, if one is present,
 // and adds their values to env. Returns an error if reading from .env fails.
-func readDotEnv(vars []EnvVar, env Environment) error {
-	dotEnvVals, err := parseDotEnv(".env")
+func (provider *DefaultEnvironmentProvider) readDotEnv(vars []EnvVar, env Environment) error {
+	dotEnvVals, err := provider.parseDotEnv(".env")
 	if err != nil {
 		return err
 	}
@@ -107,7 +129,7 @@ func readDotEnv(vars []EnvVar, env Environment) error {
 	return nil
 }
 
-func readEnvironment(vars []EnvVar, env Environment) {
+func (provider *DefaultEnvironmentProvider) readEnvironment(vars []EnvVar, env Environment) {
 	for _, variable := range vars {
 		envVal, found := os.LookupEnv(variable.EnvKey)
 		if found && len(envVal) > 0 {
@@ -116,7 +138,7 @@ func readEnvironment(vars []EnvVar, env Environment) {
 	}
 }
 
-func parseDotEnv(filePath string) (Environment, error) {
+func (provider *DefaultEnvironmentProvider) parseDotEnv(filePath string) (Environment, error) {
 	results := Environment{}
 
 	file, err := os.Open(filePath)
@@ -153,11 +175,22 @@ func parseDotEnv(filePath string) (Environment, error) {
 	return results, nil
 }
 
-func setupDefaultValues(vars []EnvVar, env Environment) {
+// TestEnvironmentProvider reads environment variables from a hard-coded list.
+type TestEnvironmentProvider struct {
+	env Environment
+}
+
+func NewTestEnvironmentProvider(env Environment) EnvironmentProvider {
+	return &TestEnvironmentProvider{
+		env: env,
+	}
+}
+
+func (provider *TestEnvironmentProvider) Read(vars []EnvVar, env Environment) {
 	for _, variable := range vars {
-		if variable.DefaultVal == "" {
-			continue
+		envVal, found := provider.env[variable.EnvKey]
+		if found {
+			env[variable.EnvKey] = envVal
 		}
-		env[variable.EnvKey] = variable.DefaultVal
 	}
 }
