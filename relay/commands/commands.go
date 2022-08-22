@@ -95,15 +95,10 @@ type DefaultEnvironmentProvider struct {
 	dotEnv map[string]string
 }
 
-func NewDefaultEnvironmentProvider() (EnvironmentProvider, error) {
-	dotEnv, err := parseDotEnv(".env")
-	if err != nil {
-		return nil, err
-	}
-
+func NewDefaultEnvironmentProvider() EnvironmentProvider {
 	return &DefaultEnvironmentProvider{
-		dotEnv: dotEnv,
-	}, nil
+		dotEnv: parseDotEnv(".env"),
+	}
 }
 
 func (provider *DefaultEnvironmentProvider) Lookup(key string) (string, bool) {
@@ -120,12 +115,13 @@ func (provider *DefaultEnvironmentProvider) Lookup(key string) (string, bool) {
 	return "", false
 }
 
-func parseDotEnv(filePath string) (map[string]string, error) {
+func parseDotEnv(filePath string) map[string]string {
 	results := map[string]string{}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		// It's OK for .env to not exist.
+		return results
 	}
 	defer file.Close()
 
@@ -154,7 +150,7 @@ func parseDotEnv(filePath string) (map[string]string, error) {
 		results[key] = value
 	}
 
-	return results, nil
+	return results
 }
 
 // TestEnvironmentProvider reads environment variables from a hard-coded list.
