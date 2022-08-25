@@ -11,6 +11,7 @@ import (
 	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
 	"github.com/fullstorydev/relay-core/relay/test"
 	"github.com/fullstorydev/relay-core/relay/traffic"
+	"github.com/fullstorydev/relay-core/relay/version"
 )
 
 func TestContentBlockerBlocksContent(t *testing.T) {
@@ -169,7 +170,7 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 		expectedHeaders = make(map[string]string)
 	}
 
-	expectedHeaders[content_blocker_plugin.PluginVersionHeaderName] = content_blocker_plugin.PluginVersion
+	expectedHeaders[content_blocker_plugin.PluginVersionHeaderName] = version.RelayRelease
 
 	test.WithCatcherAndRelay(t, testCase.env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 		request, err := http.NewRequest(

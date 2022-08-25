@@ -44,6 +44,7 @@ import (
 
 	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/traffic"
+	"github.com/fullstorydev/relay-core/relay/version"
 )
 
 var (
@@ -52,7 +53,6 @@ var (
 	pluginName = "Content-Blocker"
 
 	PluginVersionHeaderName = "X-Relay-Content-Blocker-Version"
-	PluginVersion           = "v0.2.0"
 )
 
 type contentBlockerPluginFactory struct{}
@@ -110,7 +110,7 @@ func (plug contentBlockerPlugin) HandleRequest(response http.ResponseWriter, req
 	}
 
 	// Tag the request with a header for debugging purposes.
-	request.Header.Add(PluginVersionHeaderName, PluginVersion)
+	request.Header.Add(PluginVersionHeaderName, version.RelayRelease)
 
 	return false
 }
