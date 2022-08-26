@@ -7,18 +7,10 @@ import (
 
 	"github.com/fullstorydev/relay-core/relay"
 	"github.com/fullstorydev/relay-core/relay/commands"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/paths-plugin"
-	"github.com/fullstorydev/relay-core/relay/traffic"
+	"github.com/fullstorydev/relay-core/relay/traffic/plugin-loader"
 )
 
 var logger = log.New(os.Stdout, "[relay] ", 0)
-
-// The default set of traffic plugins.
-var DefaultPlugins = []traffic.PluginFactory{
-	paths_plugin.Factory,
-	content_blocker_plugin.Factory,
-}
 
 func main() {
 	envProvider := commands.NewDefaultEnvironmentProvider()
@@ -29,7 +21,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	trafficPlugins, err := traffic.LoadPlugins(DefaultPlugins, env)
+	trafficPlugins, err := plugin_loader.Load(plugin_loader.DefaultPlugins, env)
 	if err != nil {
 		logger.Println(err)
 		os.Exit(1)
