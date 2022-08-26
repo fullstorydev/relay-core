@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
+	"github.com/fullstorydev/relay-core/relay/plugins/traffic/test-interceptor-plugin"
 	"github.com/fullstorydev/relay-core/relay/test"
+	"github.com/fullstorydev/relay-core/relay/traffic"
+	"github.com/fullstorydev/relay-core/relay/version"
 	"golang.org/x/net/websocket"
 )
 
@@ -34,31 +38,193 @@ func TestBasicRelay(t *testing.T) {
 	})
 }
 
-func TestOriginOverride(t *testing.T) {
-	newOrigin := "example.com"
-	env := map[string]string{
-		"TRAFFIC_RELAY_ORIGIN_OVERRIDE": newOrigin,
+func TestRelayedCookies(t *testing.T) {
+	testCases := []struct {
+		desc                  string
+		env                   map[string]string
+		originalCookieHeaders []string
+		expectedCookieHeaders []string
+	}{
+		{
+			desc:                  "No cookies are relayed by default",
+			env:                   map[string]string{},
+			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43", "_gat=1"},
+			expectedCookieHeaders: nil,
+		},
+		{
+			desc: "Multiple Cookie headers are merged",
+			env: map[string]string{
+				"TRAFFIC_RELAY_COOKIES": "SPECIAL_ID token _gat",
+			},
+			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43", "_gat=1"},
+			expectedCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; _gat=1"},
+		},
+		{
+			desc: "Only allowlisted cookies are relayed",
+			env: map[string]string{
+				"TRAFFIC_RELAY_COOKIES": "SPECIAL_ID foo _gat",
+			},
+			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; foo=bar", "_gat=1; bar=foo"},
+			expectedCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; foo=bar; _gat=1"},
+		},
+		{
+			desc: "A Cookie header is dropped entirely when no cookies match",
+			env: map[string]string{
+				"TRAFFIC_RELAY_COOKIES": "bar",
+			},
+			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; foo=bar", "_gat=1; bar=foo"},
+			expectedCookieHeaders: []string{"bar=foo"},
+		},
 	}
 
-	test.WithCatcherAndRelay(t, env, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
-		_, err := http.Get(relayService.HttpUrl())
-		if err != nil {
-			t.Errorf("Error GETing: %v", err)
-			return
+	for _, testCase := range testCases {
+		test.WithCatcherAndRelay(t, testCase.env, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
+			request, err := http.NewRequest("GET", relayService.HttpUrl(), nil)
+			if err != nil {
+				t.Errorf("Test '%v': Error creating request: %v", testCase.desc, err)
+				return
+			}
+
+			for _, cookieHeaderValue := range testCase.originalCookieHeaders {
+				request.Header.Add("Cookie", cookieHeaderValue)
+			}
+
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Errorf("Test '%v': Error GETing: %v", testCase.desc, err)
+				return
+			}
+			defer response.Body.Close()
+
+			if response.StatusCode != 200 {
+				t.Errorf("Test '%v': Expected 200 response: %v", testCase.desc, response)
+				return
+			}
+
+			lastRequest, err := catcherService.LastRequest()
+			if err != nil {
+				t.Errorf("Test '%v': Error reading last request from catcher: %v", testCase.desc, err)
+				return
+			}
+
+			actualCookieHeaders := lastRequest.Header["Cookie"]
+			if !reflect.DeepEqual(testCase.expectedCookieHeaders, actualCookieHeaders) {
+				t.Errorf(
+					"Test '%v': Expected Cookie header values '%v' but got '%v'",
+					testCase.desc,
+					testCase.expectedCookieHeaders,
+					actualCookieHeaders,
+				)
+			}
+		})
+	}
+}
+
+func TestRelayedHeaders(t *testing.T) {
+	testCases := []struct {
+		desc            string
+		env             map[string]string
+		originalHeaders map[string]string
+		expectedHeaders map[string]string
+	}{
+		{
+			desc: "Headers are relayed by default",
+			env:  map[string]string{},
+			originalHeaders: map[string]string{
+				"Accept-Encoding": "deflate, gzip;q=1.0, *;q=0.5",
+				"Downlink":        "100",
+				"Origin":          "https://test.com",
+				"Viewport-Width":  "100",
+			},
+			expectedHeaders: map[string]string{
+				"Accept-Encoding": "deflate, gzip;q=1.0, *;q=0.5",
+				"Downlink":        "100",
+				"Origin":          "https://test.com",
+				"Viewport-Width":  "100",
+			},
+		},
+		{
+			desc: "Overriding the Origin header works",
+			env: map[string]string{
+				"TRAFFIC_RELAY_ORIGIN_OVERRIDE": "example.com",
+			},
+			originalHeaders: map[string]string{
+				"Accept-Encoding": "deflate, gzip;q=1.0, *;q=0.5",
+				"Downlink":        "100",
+				"Origin":          "https://test.com",
+				"Viewport-Width":  "100",
+			},
+			expectedHeaders: map[string]string{
+				"Accept-Encoding": "deflate, gzip;q=1.0, *;q=0.5",
+				"Downlink":        "100",
+				"Origin":          "http://example.com",
+				"Viewport-Width":  "100",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		var lastClientIP, lastClientPort string
+
+		plugins := []traffic.PluginFactory{
+			test_interceptor_plugin.NewFactoryWithListener(func(request *http.Request) {
+				// Capture the actual IP and port used in the request.
+				addrComponents := strings.Split(request.RemoteAddr, ":")
+				lastClientIP = addrComponents[0]
+				lastClientPort = addrComponents[1]
+			}),
 		}
 
-		lastRequest, err := catcherService.LastRequest()
-		if err != nil {
-			t.Errorf("Error reading last request from catcher: %v", err)
-			return
-		}
+		test.WithCatcherAndRelay(t, testCase.env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+			request, err := http.NewRequest("GET", relayService.HttpUrl(), nil)
+			if err != nil {
+				t.Errorf("Test '%v': Error creating request: %v", testCase.desc, err)
+				return
+			}
 
-		lastRequestOrigin := lastRequest.Header.Get("Origin")
-		if "http://"+newOrigin != lastRequestOrigin {
-			t.Errorf("Origin override mismatch: \"%v\" \"%v\"", newOrigin, lastRequestOrigin)
-			return
-		}
-	})
+			for headerName, headerValue := range testCase.originalHeaders {
+				request.Header.Add(headerName, headerValue)
+			}
+
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Errorf("Test '%v': Error GETing: %v", testCase.desc, err)
+				return
+			}
+			defer response.Body.Close()
+
+			if response.StatusCode != 200 {
+				t.Errorf("Test '%v': Expected 200 response: %v", testCase.desc, response)
+				return
+			}
+
+			lastRequest, err := catcherService.LastRequest()
+			if err != nil {
+				t.Errorf("Test '%v': Error reading last request from catcher: %v", testCase.desc, err)
+				return
+			}
+
+			// Check for the built-in headers that the relay always generates.
+			testCase.expectedHeaders["X-Forwarded-Proto"] = "http"
+			testCase.expectedHeaders[traffic.RelayVersionHeaderName] = version.RelayRelease
+			testCase.expectedHeaders["X-Forwarded-For"] = lastClientIP
+			testCase.expectedHeaders["X-Forwarded-Port"] = lastClientPort
+
+			for headerName, expectedHeaderValue := range testCase.expectedHeaders {
+				expectedHeaderValues := []string{expectedHeaderValue}
+				actualHeaderValues := lastRequest.Header[headerName]
+				if !reflect.DeepEqual(expectedHeaderValues, actualHeaderValues) {
+					t.Errorf(
+						"Test '%v': Expected '%v' header values '%v' but got '%v'",
+						testCase.desc,
+						headerName,
+						expectedHeaderValues,
+						actualHeaderValues,
+					)
+				}
+			}
+		})
+	}
 }
 
 func TestMaxBodySize(t *testing.T) {

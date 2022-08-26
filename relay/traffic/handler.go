@@ -12,10 +12,11 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/fullstorydev/relay-core/relay/version"
 )
 
 const RelayVersionHeaderName = "X-Relay-Version"
-const RelayVersion = "v0.2.0" // TODO set this from tags automatically during git commit
 
 var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 
@@ -111,7 +112,7 @@ func (handler *Handler) prepRelayRequest(clientRequest *http.Request) {
 				continue
 			}
 			if first == false {
-				cookieString.WriteString("&")
+				cookieString.WriteString("; ")
 			}
 			cookieString.WriteString(cookie.String())
 			first = false
@@ -128,7 +129,7 @@ func (handler *Handler) prepRelayRequest(clientRequest *http.Request) {
 	clientRequest.Header.Add("X-Forwarded-Proto", strings.ToLower(strings.Split(clientRequest.Proto, "/")[0]))
 
 	// Add X-Relay-Version header
-	clientRequest.Header.Add(RelayVersionHeaderName, RelayVersion)
+	clientRequest.Header.Add(RelayVersionHeaderName, version.RelayRelease)
 }
 
 func (handler *Handler) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
