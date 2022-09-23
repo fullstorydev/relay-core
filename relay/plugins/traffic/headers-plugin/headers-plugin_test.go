@@ -15,13 +15,12 @@ import (
 func TestHeadersPlugin(t *testing.T) {
 	testCases := []struct {
 		desc            string
-		env             map[string]string
+		config          string
 		originalHeaders map[string]string
 		expectedHeaders map[string]string
 	}{
 		{
 			desc: "The Origin header is relayed unchanged by default",
-			env:  map[string]string{},
 			originalHeaders: map[string]string{
 				"Accept-Encoding": "deflate, gzip;q=1.0, *;q=0.5",
 				"Downlink":        "100",
@@ -37,9 +36,9 @@ func TestHeadersPlugin(t *testing.T) {
 		},
 		{
 			desc: "Overriding the Origin header works",
-			env: map[string]string{
-				"TRAFFIC_RELAY_ORIGIN_OVERRIDE": "example.com",
-			},
+			config: `headers:
+                        override-origin: example.com
+            `,
 			originalHeaders: map[string]string{
 				"Accept-Encoding": "deflate, gzip;q=1.0, *;q=0.5",
 				"Downlink":        "100",
@@ -60,7 +59,7 @@ func TestHeadersPlugin(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		test.WithCatcherAndRelay(t, testCase.env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+		test.WithCatcherAndRelay(t, testCase.config, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 			request, err := http.NewRequest("GET", relayService.HttpUrl(), nil)
 			if err != nil {
 				t.Errorf("Test '%v': Error creating request: %v", testCase.desc, err)

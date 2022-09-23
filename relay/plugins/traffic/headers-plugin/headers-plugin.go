@@ -1,6 +1,6 @@
-package headers_plugin
+// This plugin provides the capability to transform request headers.
 
-// The Headers plugin provides the capability to transform request headers.
+package headers_plugin
 
 import (
 	"fmt"
@@ -8,14 +8,14 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var (
 	Factory    headersPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-headers] ", 0)
-	pluginName = "Headers"
+	pluginName = "headers"
+	logger     = log.New(os.Stdout, fmt.Sprintf("[traffic-%s] ", pluginName), 0)
 )
 
 type headersPluginFactory struct{}
@@ -24,16 +24,18 @@ func (f headersPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f headersPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
+func (f headersPluginFactory) New(configSection *config.Section) (traffic.Plugin, error) {
 	plugin := &headersPlugin{}
 
-	if originOverrideVal, ok := env.LookupOptional("TRAFFIC_RELAY_ORIGIN_OVERRIDE"); !ok {
+	if value, err := config.LookupOptional[string](configSection, "override-origin"); err != nil {
+		return nil, err
+	} else if value == nil {
 		return nil, nil
 	} else {
-		plugin.originOverride = originOverrideVal
+		plugin.originOverride = *value
 	}
 
-	logger.Printf(`Headers plugin will override origin to "%s"`, plugin.originOverride)
+	logger.Printf(`Added rule: override "Origin" header to "%s"`, plugin.originOverride)
 
 	return plugin, nil
 }

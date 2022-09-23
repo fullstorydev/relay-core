@@ -20,7 +20,7 @@ import (
 )
 
 func TestBasicRelay(t *testing.T) {
-	test.WithCatcherAndRelay(t, nil, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, "", nil, func(catcherService *catcher.Service, relayService *relay.Service) {
 		catcherBody := getBody(catcherService.HttpUrl(), t)
 		if catcherBody == nil {
 			return
@@ -80,7 +80,7 @@ func TestRelayedHeaders(t *testing.T) {
 			}),
 		}
 
-		test.WithCatcherAndRelay(t, nil, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+		test.WithCatcherAndRelay(t, "", plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 			request, err := http.NewRequest("GET", relayService.HttpUrl(), nil)
 			if err != nil {
 				t.Errorf("Test '%v': Error creating request: %v", testCase.desc, err)
@@ -133,11 +133,11 @@ func TestRelayedHeaders(t *testing.T) {
 }
 
 func TestMaxBodySize(t *testing.T) {
-	env := map[string]string{
-		"TRAFFIC_RELAY_MAX_BODY_SIZE": fmt.Sprintf("%v", 5),
-	}
+	configYaml := `relay:
+                      max-body-size: 5
+    `
 
-	test.WithCatcherAndRelay(t, env, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, configYaml, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
 		response, err := http.Get(relayService.HttpUrl())
 		if err != nil {
 			t.Errorf("Error GETing: %v", err)
@@ -152,7 +152,7 @@ func TestMaxBodySize(t *testing.T) {
 }
 
 func TestRelayNotFound(t *testing.T) {
-	test.WithCatcherAndRelay(t, nil, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, "", nil, func(catcherService *catcher.Service, relayService *relay.Service) {
 		faviconURL := fmt.Sprintf("%v/favicon.ico", relayService.HttpUrl())
 		response, err := http.Get(faviconURL)
 		if err != nil {
@@ -167,7 +167,7 @@ func TestRelayNotFound(t *testing.T) {
 }
 
 func TestWebSocketEcho(t *testing.T) {
-	test.WithCatcherAndRelay(t, nil, nil, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, "", nil, func(catcherService *catcher.Service, relayService *relay.Service) {
 		echoURL := fmt.Sprintf("%v/echo", relayService.WsUrl())
 		ws, err := websocket.Dial(echoURL, "", relayService.HttpUrl())
 		if err != nil {

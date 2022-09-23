@@ -1,33 +1,75 @@
 package main
 
 import (
+	"flag"
+	"io/ioutil"
 	"log"
 	"os"
 	"time"
 
 	"github.com/fullstorydev/relay-core/relay"
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
+	"github.com/fullstorydev/relay-core/relay/environment"
 	"github.com/fullstorydev/relay-core/relay/traffic/plugin-loader"
 )
 
 var logger = log.New(os.Stdout, "[relay] ", 0)
 
+func readConfigFile(path string) (rawConfigFileBytes []byte, err error) {
+	if path == "-" {
+		rawConfigFileBytes, err = ioutil.ReadAll(os.Stdin)
+		return
+	}
+
+	rawConfigFileBytes, err = os.ReadFile(path)
+	return
+}
+
 func main() {
-	envProvider := commands.NewDefaultEnvironmentProvider()
-	env := commands.NewEnvironment(envProvider)
-	config, err := relay.ReadConfig(env)
+	// The --config option determines the path to the configuration file. A
+	// default configuration file, 'relay.yaml', is distributed with the relay,
+	// so it's not necessary to specify one if you just want to configure the
+	// relay with environment variables. Use '-' to read the configuration file
+	// from stdin.
+	configFilePath := flag.String("config", "relay.yaml", "Configuration file path")
+	flag.Parse()
+
+	rawConfigFileBytes, err := readConfigFile(*configFilePath)
+	if err != nil {
+		logger.Printf(`Couldn't read configuration file "%s": %v\n`, *configFilePath, err)
+		os.Exit(1)
+	}
+
+	// Substitute the values of environment variables into the configuration
+	// file. In versions of the relay prior to 0.3, configuration was performed
+	// entirely via environment variables. Environment variable substitution
+	// allows configurations based on those older environment variables to
+	// continue to work and generally increases the flexibility of the
+	// configuration file.
+	envProvider := environment.NewDefaultProvider()
+	env := environment.NewMap(envProvider)
+	configFileString := env.SubstituteVarsIntoYaml(string(rawConfigFileBytes))
+
+	// Parse the configuration file.
+	configFile, err := config.NewFileFromYamlString(configFileString)
 	if err != nil {
 		logger.Println(err)
 		os.Exit(1)
 	}
 
-	trafficPlugins, err := plugin_loader.Load(plugin_loader.DefaultPlugins, env)
+	config, err := relay.ReadOptions(configFile)
 	if err != nil {
 		logger.Println(err)
 		os.Exit(1)
 	}
 
-	logger.Println("Plugins:")
+	trafficPlugins, err := plugin_loader.Load(plugin_loader.DefaultPlugins, configFile)
+	if err != nil {
+		logger.Println(err)
+		os.Exit(1)
+	}
+
+	logger.Println("Active plugins:")
 	for _, tp := range trafficPlugins {
 		logger.Println("\tTraffic:", tp.Name())
 	}

@@ -10,12 +10,16 @@ import (
 
 var MonitorPath = "/__relay__up__/"
 
-type ServiceConfig struct {
+// ServiceOptions contains configuration options for the relay network service.
+//
+// See also traffic.RelayOptions, which provides options for the actual relay
+// functionality.
+type ServiceOptions struct {
 	Port int // The port that the relay service should listen on.
 }
 
-func NewDefaultServiceConfig() *ServiceConfig {
-	return &ServiceConfig{}
+func NewDefaultServiceOptions() *ServiceOptions {
+	return &ServiceOptions{}
 }
 
 // Service implements the relay service, exposing both the traffic handler and
@@ -25,7 +29,7 @@ type Service struct {
 	mux      *http.ServeMux
 }
 
-func NewService(relayConfig *traffic.RelayConfig, trafficPlugins []traffic.Plugin) *Service {
+func NewService(relayConfig *traffic.RelayOptions, trafficPlugins []traffic.Plugin) *Service {
 	mux := http.NewServeMux()
 
 	// Write a simple page for monitoring.

@@ -5,21 +5,20 @@ import (
 
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 	"github.com/fullstorydev/relay-core/relay/traffic/plugin-loader"
 )
 
 // WithCatcherAndRelay is a helper function that wraps the setup and teardown
-// required by most relay unit tests. Given a set of plugin configuration
-// variables and an allowlist of plugins to load, it loads and configures the
-// plugins, starts the catcher and relay services, and invokes the provided
-// action function, which should handle the actual testing. Afterwards, it
-// ensures that everything gets torn down so that the next test can start from a
-// clean slate.
+// required by most relay unit tests. Given a configuration and a list of
+// plugins to load, it loads and configures the plugins, starts the catcher and
+// relay services, and invokes the provided action function, which should handle
+// the actual testing. Afterwards, it ensures that everything gets torn down so
+// that the next test can start from a clean slate.
 func WithCatcherAndRelay(
 	t *testing.T,
-	envVars map[string]string,
+	configYaml string,
 	pluginFactories []traffic.PluginFactory,
 	action func(catcherService *catcher.Service, relayService *relay.Service),
 ) {
@@ -30,13 +29,17 @@ func WithCatcherAndRelay(
 	}
 	defer catcherService.Close()
 
-	if envVars == nil {
-		envVars = map[string]string{}
+	configFile, err := config.NewFileFromYamlString(configYaml)
+	if err != nil {
+		t.Errorf("Error parsing configuration YAML: %v", err)
+		return
 	}
-	envVars["RELAY_PORT"] = "0"
-	envVars["TRAFFIC_RELAY_TARGET"] = catcherService.HttpUrl()
 
-	relayService, err := setupRelay(envVars, pluginFactories)
+	relaySection := configFile.GetOrAddSection("relay")
+	relaySection.Set("port", 0)
+	relaySection.Set("target", catcherService.HttpUrl())
+
+	relayService, err := setupRelay(configFile, pluginFactories)
 	if err != nil {
 		t.Errorf("Error setting up relay: %v", err)
 		return
@@ -52,20 +55,18 @@ func WithCatcherAndRelay(
 }
 
 func setupRelay(
-	envVars map[string]string,
+	configFile *config.File,
 	pluginFactories []traffic.PluginFactory,
 ) (*relay.Service, error) {
-	envProvider := commands.NewTestEnvironmentProvider(envVars)
-	env := commands.NewEnvironment(envProvider)
-	config, err := relay.ReadConfig(env)
+	options, err := relay.ReadOptions(configFile)
 	if err != nil {
 		return nil, err
 	}
 
-	trafficPlugins, err := plugin_loader.Load(pluginFactories, env)
+	trafficPlugins, err := plugin_loader.Load(pluginFactories, configFile)
 	if err != nil {
 		return nil, err
 	}
 
-	return relay.NewService(config.Relay, trafficPlugins), nil
+	return relay.NewService(options.Relay, trafficPlugins), nil
 }

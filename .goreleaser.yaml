@@ -20,8 +20,12 @@ builds:
 archives:
   -
     builds:
-    - "relay"
-    - "catcher"
+      - relay
+      - catcher
+    files:
+      - LICENSE
+      - README.md
+      - relay.yaml
 
 checksum:
   name_template: 'checksums.txt'

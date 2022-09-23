@@ -16,48 +16,86 @@ func TestPathRewriting(t *testing.T) {
 	testCases := []pathsPluginTestCase{
 		{
 			desc: "Basic path remapping works",
-			env: map[string]string{
-				"TRAFFIC_PATHS_MATCH":       `^/foo/`,
-				"TRAFFIC_PATHS_REPLACEMENT": `/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/foo/'
+                            target-path: '/xyz/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz`,
 			expectedUrl: `${TARGET_HTTP_URL}/xyz/bar/baz`,
 		},
 		{
 			desc: "Paths that do not match are not changed",
-			env: map[string]string{
-				"TRAFFIC_PATHS_MATCH":       `^/foo/`,
-				"TRAFFIC_PATHS_REPLACEMENT": `/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/foo/'
+                            target-path: '/xyz/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/abc/bar/baz`,
 			expectedUrl: `${TARGET_HTTP_URL}/abc/bar/baz`,
 		},
 		{
 			desc: "Capture groups can be used",
-			env: map[string]string{
-				"TRAFFIC_PATHS_MATCH":       `^/([^/]*)/foo/([^/]*)/bar/`,
-				"TRAFFIC_PATHS_REPLACEMENT": `/$1/xyz/$2/abc/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/([^/]*)/foo/([^/]*)/bar/'
+                            target-path: '/$1/xyz/$2/abc/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/apple/foo/banana/bar/carrot`,
 			expectedUrl: `${TARGET_HTTP_URL}/apple/xyz/banana/abc/carrot`,
 		},
 		{
 			desc: "Query params are preserved",
-			env: map[string]string{
-				"TRAFFIC_PATHS_MATCH":       `^/foo/`,
-				"TRAFFIC_PATHS_REPLACEMENT": `/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/foo/'
+                            target-path: '/xyz/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz?x=y&abc=123`,
 			expectedUrl: `${TARGET_HTTP_URL}/xyz/bar/baz?x=y&abc=123`,
 		},
 		{
 			desc: "Matching and replacement only affect the path",
-			env: map[string]string{
-				"TRAFFIC_PATHS_MATCH":       `foo`,
-				"TRAFFIC_PATHS_REPLACEMENT": `xyz`,
-			},
+			config: `paths:
+                        routes:
+                          - path: 'foo'
+                            target-path: 'xyz'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz?x=y&foo=123`,
 			expectedUrl: `${TARGET_HTTP_URL}/xyz/bar/baz?x=y&foo=123`,
+		},
+		{
+			desc: "Routes are considered in order (part 1)",
+			config: `paths:
+                        routes:
+                          - path: '^/foobar/'
+                            target-path: '/xyzbar/'
+                          - path: '^/foo'
+                            target-path: '/xyz/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/foobar/baz`,
+			expectedUrl: `${TARGET_HTTP_URL}/xyzbar/baz`,
+		},
+		{
+			desc: "Routes are considered in order (part 2)",
+			config: `paths:
+                        routes:
+                          - path: '^/foobar/'
+                            target-path: '/xyzbar/'
+                          - path: '^/foo'
+                            target-path: '/xyz/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/football/baz`,
+			expectedUrl: `${TARGET_HTTP_URL}/xyz/tball/baz`,
+		},
+		{
+			desc: "TRAFFIC_PATHS_* variables work",
+			config: `paths:
+                        TRAFFIC_PATHS_MATCH: '^/foo/'
+                        TRAFFIC_PATHS_REPLACEMENT: '/xyz/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz`,
+			expectedUrl: `${TARGET_HTTP_URL}/xyz/bar/baz`,
 		},
 	}
 
@@ -66,63 +104,117 @@ func TestPathRewriting(t *testing.T) {
 	}
 }
 
-func TestSpecialPaths(t *testing.T) {
+func TestPathRewritingToFullUrl(t *testing.T) {
 	testCases := []pathsPluginTestCase{
 		{
 			desc: "Basic path remapping works",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/foo/ ${ALT_TARGET_HTTP_URL}/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/foo/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/xyz/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz`,
 			expectedUrl: `${ALT_TARGET_HTTP_URL}/xyz/bar/baz`,
 		},
 		{
 			desc: "Paths that do not match are not changed",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/foo/ ${ALT_TARGET_HTTP_URL}/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/foo/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/xyz/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/abc/bar/baz`,
 			expectedUrl: `${TARGET_HTTP_URL}/abc/bar/baz`,
 		},
 		{
 			desc: "Capture groups can be used",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/([^/]*)/foo/([^/]*)/bar/ ${ALT_TARGET_HTTP_URL}/$1/xyz/$2/abc/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/([^/]*)/foo/([^/]*)/bar/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/$1/xyz/$2/abc/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/apple/foo/banana/bar/carrot`,
 			expectedUrl: `${ALT_TARGET_HTTP_URL}/apple/xyz/banana/abc/carrot`,
 		},
 		{
 			desc: "Query params are preserved",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/foo/ ${ALT_TARGET_HTTP_URL}/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/foo/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/xyz/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz?x=y&abc=123`,
 			expectedUrl: `${ALT_TARGET_HTTP_URL}/xyz/bar/baz?x=y&abc=123`,
 		},
 		{
 			desc: "Matching and replacement only affect the path",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/foo/ ${ALT_TARGET_HTTP_URL}/xyz/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '/?foo'
+                            target-url: '${ALT_TARGET_HTTP_URL}/xyz'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz?x=y&foo=123`,
 			expectedUrl: `${ALT_TARGET_HTTP_URL}/xyz/bar/baz?x=y&foo=123`,
 		},
 		{
 			desc: "Multiple rules can be used at once (part 1)",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/apple/ ${ALT_TARGET_HTTP_URL}/xyz/ ^/banana/ ${ALT_TARGET_HTTP_URL}/abc/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/apple/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/xyz/'
+                          - path: '^/banana/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/abc/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/apple/foo/bar`,
 			expectedUrl: `${ALT_TARGET_HTTP_URL}/xyz/foo/bar`,
 		},
 		{
 			desc: "Multiple rules can be used at once (part 2)",
-			env: map[string]string{
-				"TRAFFIC_RELAY_SPECIALS": `^/apple/ ${ALT_TARGET_HTTP_URL}/xyz/ ^/banana/ ${ALT_TARGET_HTTP_URL}/abc/`,
-			},
+			config: `paths:
+                        routes:
+                          - path: '^/apple/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/xyz/'
+                          - path: '^/banana/'
+                            target-url: '${ALT_TARGET_HTTP_URL}/abc/'
+            `,
 			originalUrl: `${RELAY_HTTP_URL}/banana/foo/bar`,
 			expectedUrl: `${ALT_TARGET_HTTP_URL}/abc/foo/bar`,
+		},
+		{
+			desc: "TRAFFIC_RELAY_SPECIALS works (part 1)",
+			config: `paths:
+                        TRAFFIC_RELAY_SPECIALS: '^/apple/ ${ALT_TARGET_HTTP_URL}/xyz/ ^/banana/ ${ALT_TARGET_HTTP_URL}/abc/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/apple/foo/bar`,
+			expectedUrl: `${ALT_TARGET_HTTP_URL}/xyz/foo/bar`,
+		},
+		{
+			desc: "TRAFFIC_RELAY_SPECIALS works (part 2)",
+			config: `paths:
+                        TRAFFIC_RELAY_SPECIALS: '^/apple/ ${ALT_TARGET_HTTP_URL}/xyz/ ^/banana/ ${ALT_TARGET_HTTP_URL}/abc/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/banana/foo/bar`,
+			expectedUrl: `${ALT_TARGET_HTTP_URL}/abc/foo/bar`,
+		},
+		{
+			desc: "TRAFFIC_PATHS_* and TRAFFIC_RELAY_SPECIALS can be combined (part 1)",
+			config: `paths:
+                        TRAFFIC_PATHS_MATCH: '^/foo/'
+                        TRAFFIC_PATHS_REPLACEMENT: '/xyz/'
+                        TRAFFIC_RELAY_SPECIALS: '^/apple/ ${ALT_TARGET_HTTP_URL}/xyz/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/foo/bar/baz`,
+			expectedUrl: `${TARGET_HTTP_URL}/xyz/bar/baz`,
+		},
+		{
+			desc: "TRAFFIC_PATHS_* and TRAFFIC_RELAY_SPECIALS can be combined (part 2)",
+			config: `paths:
+                        TRAFFIC_PATHS_MATCH: '^/foo/'
+                        TRAFFIC_PATHS_REPLACEMENT: '/xyz/'
+                        TRAFFIC_RELAY_SPECIALS: '^/apple/ ${ALT_TARGET_HTTP_URL}/xyz/'
+            `,
+			originalUrl: `${RELAY_HTTP_URL}/apple/foo/bar`,
+			expectedUrl: `${ALT_TARGET_HTTP_URL}/xyz/foo/bar`,
 		},
 	}
 
@@ -133,7 +225,7 @@ func TestSpecialPaths(t *testing.T) {
 
 type pathsPluginTestCase struct {
 	desc        string
-	env         map[string]string
+	config      string
 	originalUrl string
 	expectedUrl string
 }
@@ -152,20 +244,16 @@ func runPathsPluginTest(t *testing.T, testCase pathsPluginTestCase) {
 	}
 	defer altCatcherService.Close()
 
-	// Substitute ALT_TARGET_HTTP_URL into the environment variables so it can
-	// be used in TRAFFIC_RELAY_SPECIALS.
-	env := map[string]string{}
-	for envVar, value := range testCase.env {
-		env[envVar] = strings.Replace(value, "${ALT_TARGET_HTTP_URL}", altCatcherService.HttpUrl(), -1)
-	}
+	// Substitute ALT_TARGET_HTTP_URL into the configuration so it can be
+	// referenced by the tests.
+	configYaml := strings.Replace(testCase.config, "${ALT_TARGET_HTTP_URL}", altCatcherService.HttpUrl(), -1)
 
-	test.WithCatcherAndRelay(t, env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, configYaml, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 		// Substitute RELAY_HTTP_URL and TARGET_HTTP_URL into the URLs. We
-		// unfortunately can't combine this with the environment variable
-		// substitution because we only have access to these values once the
-		// relay has started up, but at that point the plugins have already been
-		// configured and changes to environment variable values would have no
-		// effect.
+		// unfortunately can't combine this with the configuration substitution
+		// because we only have access to these values once the relay has
+		// started up, but at that point the plugins have already been
+		// configured and changes to the configuration would have no effect.
 		varReplacer := strings.NewReplacer(
 			"${ALT_TARGET_HTTP_URL}", altCatcherService.HttpUrl(),
 			"${RELAY_HTTP_URL}", relayService.HttpUrl(),

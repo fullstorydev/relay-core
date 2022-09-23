@@ -1,25 +1,26 @@
-package cookies_plugin
-
-// The Cookies plugin provides the capability to allowlist cookies on incoming
+// This plugin provides the capability to allowlist cookies on incoming
 // requests. By default, all cookies are blocked. This is because in the context
 // of the relay, cookies are quite high-risk; it usually runs in a first-party
 // context, so the risk of receiving cookies that were intended for another
 // service is substantial.
 
+package cookies_plugin
+
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var (
 	Factory    cookiesPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-cookies] ", 0)
-	pluginName = "Cookies"
+	pluginName = "cookies"
+	logger     = log.New(os.Stdout, fmt.Sprintf("[traffic-%s] ", pluginName), 0)
 )
 
 type cookiesPluginFactory struct{}
@@ -28,16 +29,39 @@ func (f cookiesPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f cookiesPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
+func (f cookiesPluginFactory) New(configSection *config.Section) (traffic.Plugin, error) {
 	plugin := &cookiesPlugin{
 		allowlist: map[string]bool{},
 	}
 
-	if cookiesVal, ok := env.LookupOptional("TRAFFIC_RELAY_COOKIES"); ok {
-		for _, cookieName := range strings.Split(cookiesVal, " ") {
-			logger.Printf(`Cookies plugin will allowlist cookie "%s"`, cookieName)
-			plugin.allowlist[cookieName] = true
-		}
+	if err := config.ParseOptional(
+		configSection,
+		"allowlist",
+		func(key string, allowlist []string) error {
+			for _, cookieName := range allowlist {
+				logger.Printf(`Added rule: allowlist cookie "%s"`, cookieName)
+				plugin.allowlist[cookieName] = true
+			}
+
+			return nil
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	if err := config.ParseOptional(
+		configSection,
+		"TRAFFIC_RELAY_COOKIES",
+		func(key string, allowlist string) error {
+			for _, cookieName := range strings.Split(allowlist, " ") {
+				logger.Printf(`Added rule: allowlist cookie "%s"`, cookieName)
+				plugin.allowlist[cookieName] = true
+			}
+
+			return nil
+		},
+	); err != nil {
+		return nil, err
 	}
 
 	if len(plugin.allowlist) == 0 {

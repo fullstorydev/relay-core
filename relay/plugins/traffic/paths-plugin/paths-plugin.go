@@ -1,9 +1,7 @@
-package paths_plugin
+// This plugin watches incoming traffic and optionally rewrites request URL
+// paths. The most common use is to remove or rewrite a path prefix.
 
-/*
-	The Paths plugin watches incoming traffic and optionally rewrites request URL paths.
-	The most common use is to remove or rewrite a path prefix.
-*/
+package paths_plugin
 
 import (
 	"fmt"
@@ -14,15 +12,21 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var (
 	Factory    pathsPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-paths] ", 0)
-	pluginName = "Paths"
+	pluginName = "paths"
+	logger     = log.New(os.Stdout, fmt.Sprintf("[traffic-%s] ", pluginName), 0)
 )
+
+type ConfigRouteRule struct {
+	Path       string
+	TargetPath string `yaml:"target-path"`
+	TargetUrl  string `yaml:"target-url"`
+}
 
 type pathsPluginFactory struct{}
 
@@ -30,104 +34,119 @@ func (f pathsPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f pathsPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
+func (f pathsPluginFactory) New(configSection *config.Section) (traffic.Plugin, error) {
 	plugin := &pathsPlugin{}
 
-	if rule, err := f.readTrafficPathsRule(env); err != nil {
-		return nil, err
-	} else if rule != nil {
-		plugin.rules = append(plugin.rules, rule)
+	addRules := func(_ string, rules []ConfigRouteRule) error {
+		for _, rule := range rules {
+			if rule.TargetPath == "" && rule.TargetUrl == "" {
+				return fmt.Errorf(`Route for path "%v" has no target`, rule.Path)
+			}
+			if rule.TargetPath != "" && rule.TargetUrl != "" {
+				return fmt.Errorf(`Route for path "%v" has multiple targets`, rule.Path)
+			}
+
+			replacement := rule.TargetPath
+			target := pathTarget
+			if replacement == "" {
+				replacement = rule.TargetUrl
+				target = urlTarget
+			}
+
+			if match, err := regexp.Compile(rule.Path); err != nil {
+				return fmt.Errorf(`Could not compile path regular expression "%v": %v`, rule.Path, err)
+			} else {
+				logger.Printf(`Added rule: route "%s" to %s "%s"`, match, target, replacement)
+				plugin.rules = append(plugin.rules, &pathRule{
+					match:       match,
+					replacement: replacement,
+					target:      target,
+				})
+			}
+		}
+
+		return nil
 	}
 
-	if rules, err := f.readSpecialsRule(env); err != nil {
+	if err := config.ParseOptional(configSection, "routes", addRules); err != nil {
 		return nil, err
-	} else {
-		plugin.rules = append(plugin.rules, rules...)
+	}
+	if err := f.addTrafficPathsRule(configSection, addRules); err != nil {
+		return nil, err
+	}
+	if err := f.addSpecialsRule(configSection, addRules); err != nil {
+		return nil, err
 	}
 
 	if len(plugin.rules) == 0 {
 		return nil, nil
 	}
 
-	for _, rule := range plugin.rules {
-		logger.Printf(`Paths plugin will replace all "%s" with "%s"`, rule.match, rule.replacement)
-	}
-
 	return plugin, nil
 }
 
-// readTrafficPathsRule reads a path rule defined using the TRAFFIC_PATHS_MATCH
-// and TRAFFIC_PATHS_REPLACEMENT environment variables, if one exists. These
-// rules match against the path portion of a URL and, if a match is found,
-// replace the URL's path. (The other portions of the URL remain the same.)
-// Returns nil if no meaningful rule is defined.
-func (f pathsPluginFactory) readTrafficPathsRule(env *commands.Environment) (*pathRule, error) {
-	rule := &pathRule{
-		target: pathTarget,
-	}
-
+// addTrafficPathsRule reads a path rule defined using the TRAFFIC_PATHS_MATCH
+// and TRAFFIC_PATHS_REPLACEMENT options, if one exists. These rules match
+// against the path portion of a URL and, if a match is found, replace the URL's
+// path. (The other portions of the URL remain the same.)
+func (f pathsPluginFactory) addTrafficPathsRule(
+	configSection *config.Section,
+	addRules func(_ string, rules []ConfigRouteRule) error,
+) error {
 	// Read the replacement value, which is just a literal string. If it's not
 	// present, the rule wouldn't do anything, regardless of whether
 	// TRAFFIC_PATHS_MATCH is present, so we just return.
-	if replacement, ok := env.LookupOptional("TRAFFIC_PATHS_REPLACEMENT"); !ok {
-		return nil, nil
-	} else {
-		rule.replacement = replacement
+	replacement, err := config.LookupOptional[string](configSection, "TRAFFIC_PATHS_REPLACEMENT")
+	if err != nil {
+		return err
+	}
+	if replacement == nil {
+		return nil
 	}
 
 	// Read the match value, which is a Go regular expression. Since we know a
 	// replacement value was specified, we treat the match value as required;
 	// one doesn't make sense without the other.
-	if err := env.ParseRequired("TRAFFIC_PATHS_MATCH", func(key string, value string) error {
-		if match, err := regexp.Compile(value); err != nil {
-			return fmt.Errorf("Could not compile regular expression: %v", err)
-		} else {
-			rule.match = match
-			return nil
-		}
-	}); err != nil {
-		return nil, err
-	}
-
-	return rule, nil
+	return config.ParseRequired(
+		configSection,
+		"TRAFFIC_PATHS_MATCH",
+		func(key string, match string) error {
+			return addRules(key, []ConfigRouteRule{{
+				Path:       match,
+				TargetPath: *replacement,
+			}})
+		},
+	)
 }
 
-// readSpecialsRule reads path rules defined using the TRAFFIC_RELAY_SPECIALS
-// environment variable, if one exists. These rules match against the path
-// portion of a URL and, if a match is found, replace the entire URL. (Query
-// params are left untouched.) Returns an empty list if no such rules are
-// defined.
-func (f pathsPluginFactory) readSpecialsRule(env *commands.Environment) ([]*pathRule, error) {
-	var rules []*pathRule
-
-	if err := env.ParseOptional("TRAFFIC_RELAY_SPECIALS", func(key string, value string) error {
-		specialsTokens := strings.Split(value, " ")
-		if len(specialsTokens)%2 != 0 {
-			return fmt.Errorf("Last key has no value")
-		}
-
-		for i := 0; i < len(specialsTokens); i += 2 {
-			matchVar := specialsTokens[i]
-			replacement := specialsTokens[i+1]
-
-			match, err := regexp.Compile(matchVar)
-			if err != nil {
-				return fmt.Errorf("Could not compile regular expression \"%v\": %v", matchVar, err)
+// addSpecialsRule reads path rules defined using the TRAFFIC_RELAY_SPECIALS
+// option, if one exists. These rules match against the path portion of a URL
+// and, if a match is found, replace the entire URL. (Query params are left
+// untouched.)
+func (f pathsPluginFactory) addSpecialsRule(
+	configSection *config.Section,
+	addRules func(_ string, rules []ConfigRouteRule) error,
+) error {
+	return config.ParseOptional(
+		configSection,
+		"TRAFFIC_RELAY_SPECIALS",
+		func(key string, value string) error {
+			specialsTokens := strings.Split(value, " ")
+			if len(specialsTokens)%2 != 0 {
+				return fmt.Errorf("Last key has no value")
 			}
 
-			rules = append(rules, &pathRule{
-				match:       match,
-				replacement: replacement,
-				target:      urlTarget,
-			})
-		}
+			var rules []ConfigRouteRule
+			for i := 0; i < len(specialsTokens); i += 2 {
+				rules = append(rules, ConfigRouteRule{
+					Path:      specialsTokens[i],
+					TargetUrl: specialsTokens[i+1],
+				})
+			}
 
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return rules, nil
+			return addRules(key, rules)
+		},
+	)
 }
 
 type pathsPlugin struct {

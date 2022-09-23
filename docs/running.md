@@ -1,49 +1,82 @@
 # Running Relay
 
-Pre-built Docker images are available for every version of the Relay so unless you need a custom build that's the way to go:
+The Relay service is available as a Docker image. Unless you need a custom
+build, using a Docker image is the easiest way to get up and running quickly.
 
 - [Pre-built Docker images](https://github.com/fullstorydev/relay-core/packages)
 
-## Using Docker images
+## Getting Docker images
 
-Pre-built Docker images include all of the default plugins and can be configured for your specific scenario.
+In most cases, using a pre-built Docker image is the preferred approach to using
+Relay. If you're working on the Relay code or you need a custom build, it can
+also be useful to build a local Docker image. Both approaches are explained
+below.
 
-### Using the pre-built Docker image
+### Pulling a pre-built Docker image
 
-For each release version of Relay there is a Docker image hosted in GitHub's Packages registry. You can see them listed on the [relay-core packages page](https://github.com/fullstorydev/relay-core/packages).
+GitHub requires authentication in order to use even public Docker images, so
+you'll need to authenticate the Docker CLI using
+[these instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
 
-Somewhat annoyingly, GitHub requires authentication in order to use even public Docker images so you'll need to authenticate the Docker CLI using [these instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
-
-Once Docker is authenticated with GitHub you can pull the image in the usual way:
-
-	docker pull ghcr.io/fullstorydev/relay-core/relay-core:v0.2.0
-
-You probably want the latest version so check for a version greater than v0.2.0.
+Once Docker is authenticated with GitHub you can pull the image using `docker pull`.
+You can find the necessary command on the
+[relay-core package page](https://github.com/fullstorydev/relay-core/pkgs/container/relay-core%2Frelay-core).
 
 ### Building a local Docker image
 
-It can be useful to build a local image for testing or for hosting in your own package registry instead of using one of the [release images](https://github.com/fullstorydev/relay-core/packages) hosted on GitHub's Packages registry.
-
-To create an image:
+If you're working on the Relay code or you need a custom build, you may find it
+useful to build a Docker image locally. You can do as follows:
 
 	cd relay-core/
 	docker build -t relay:local-v0 .
 
-### Running the Docker image:
+## Running the Relay using a Docker image
 
-Pre-built:
+Once you've followed the directions in the previous section and obtained a Relay
+Docker image, you're ready to run Relay. The examples below use the image
+name `relay:image`; you'll need to substitute in the name of the image you
+obtained above. For example, if you built a local Docker image, you'll want to
+replace `relay:image` with `relay:local-v0`.
 
-	docker run -e "RELAY_PORT=8990" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d ghcr.io/fullstorydev/relay-core/relay-core:v0.2.0
+Running Relay requires that you set one required option: the target. This
+option tells Relay where to direct the traffic it receives. It's specified
+as a URL, but you only need to provide the protocol and host; the path and query
+parameters are derived from incoming requests. As a convenience, you can specify
+the target by starting the container with the `TRAFFIC_RELAY_TARGET` environment
+variable set appropriately:
 
-(update the `v0.2.0` if you're using a different version)
+	docker run -e "TRAFFIC_RELAY_TARGET=https://target.example:12346" --publish 8990:8990 -it --rm relay:image
 
-Locally built:
+You can also set the target using the configuration file. The configuration file
+gives you access to quite a few more advanced features; for more details, see
+the comments in the
+[default configuration file](https://github.com/fullstorydev/relay-core/blob/master/relay.yaml).
+You can use this file as a starting point when configuring Relay. You can test
+your configuration file by piping it into the Docker container when you run it.
+The `--config -` argument tells Relay to read its configuration from stdin:
 
-	docker run -e "RELAY_PORT=8990" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d relay:local-v0
+	cat custom-relay.yaml | docker run --publish 8990:8990 -i --rm relay:image --config -
 
-You'll want to change the various environment variables to suite your scenario, as documented in the [example dotenv file](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example).
+In production you may find it more convenient to bind mount your custom
+configuration file over the default one, which is located at
+`/etc/relay/relay.yaml`, or to mount a volume containing the configuration file
+and use the `--config` option to tell Relay where to find it. For more details
+on these mechanisms, consult the Docker documentation. If you're hosting the
+image yourself, you also have the option of updating `relay.yaml` and rebuilding
+the Docker image, so that your desired configuration becomes the new default.
 
-## Local Development
+The configuration file can reference environment variables. You may find this
+useful in more complex scenarios. The
+[default configuration file](https://github.com/fullstorydev/relay-core/blob/master/relay.yaml)
+references a number of environment variables; you can use these variables as an
+alternative way to configure Relay. The `TRAFFIC_RELAY_TARGET` variable
+discussed above is an example of using this kind of environment variable
+reference.
+
+## Local development
+
+Working on the Relay code is easy; the only dependencies are the standard Unix
+development tools and a working installation of Go.
 
 To build:
 
@@ -53,17 +86,15 @@ To run tests:
 
 	make test
 
-To run the relay locally after a successful build:
+To run Relay locally after a successful build:
 
-	cd dist
-	./relay
+	./dist/relay
 
-## Configuration
+By default, Relay reads its configuration from `relay.yaml` in the current
+working directory. You can explicitly specify the path to the configuration file
+using the `--config` option:
 
-### Configuration in production
+	./dist/relay --config /etc/relay/relay.yaml
 
-Whether you're using a Docker container or running a binary in a shell script, in production you need to set up environment variables to configure `relay` and its plugins. Recognized environment variables are documented in [`relay-core/config/dotenv.example`](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example) and the `relay` command will print helpful information when required variables are missing.
-
-### Configuration during development and local testing
-
-In production you'll set environment variables but during development and local testing it's often easier to use a dotenv file. Relay will look for a dotenv file in the current working directory. You can find an example dotenv file with an explanation for each variable in [`relay-core/config/dotenv.example`](https://github.com/fullstorydev/relay-core/blob/master/config/dotenv.example). Copy that file into `relay-core/dist/.env` and change the values to your desired configuration.
+If you plan to add new functionality to Relay, it's important to understand
+its plugin-based architecture; you can read more about that [here](plugins.md].
