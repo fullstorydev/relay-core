@@ -16,7 +16,7 @@ Somewhat annoyingly, GitHub requires authentication in order to use even public 
 
 Once Docker is authenticated with GitHub you can pull the image in the usual way:
 
-	docker pull docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.2.0
+	docker pull ghcr.io/fullstorydev/relay-core/relay-core:v0.2.0
 
 You probably want the latest version so check for a version greater than v0.2.0.
 
@@ -33,7 +33,7 @@ To create an image:
 
 Pre-built:
 
-	docker run -e "RELAY_PORT=8990" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d docker.pkg.github.com/fullstorydev/relay-core/relay-core:v0.2.0
+	docker run -e "RELAY_PORT=8990" -e "TRAFFIC_RELAY_TARGET=http://127.0.0.1:12346/" --publish 8990:8990 -d ghcr.io/fullstorydev/relay-core/relay-core:v0.2.0
 
 (update the `v0.2.0` if you're using a different version)
 
