@@ -12,7 +12,7 @@ Pre-built Docker images include all of the default plugins and can be configured
 
 For each release version of Relay there is a Docker image hosted in GitHub's Packages registry. You can see them listed on the [relay-core packages page](https://github.com/fullstorydev/relay-core/packages).
 
-Somewhat annoyingly, GitHub requires authentication in order to use even public Docker images so you'll need to authenticate the Docker CLI using [these instructions](https://help.github.com/en/packages/using-github-packages-with-your-projects-ecosystem/configuring-docker-for-use-with-github-packages#authenticating-to-github-packages).
+Somewhat annoyingly, GitHub requires authentication in order to use even public Docker images so you'll need to authenticate the Docker CLI using [these instructions](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry).
 
 Once Docker is authenticated with GitHub you can pull the image in the usual way:
 
