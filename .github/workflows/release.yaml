@@ -13,6 +13,8 @@ jobs:
           fetch-depth: 0
       - name: Set up go
         uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
       - name: Build and release
         uses: goreleaser/goreleaser-action@v3
         with:
