@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
 )
@@ -33,13 +34,30 @@ type Plugin interface {
 	// HTTP request.
 	//
 	// Plugins may ignore an incoming request, alter it in some way, or service
-	// the request and return a response to the client. If the 'serviced'
-	// parameter is true, a previous plugin has already responded to the
-	// request.
+	// the request and return a response to the client.
 	//
 	// HandleRequest should return true if a response has been sent to the
 	// client.
-	HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool
+	HandleRequest(
+		response http.ResponseWriter,
+		request *http.Request,
+		requestInfo RequestInfo,
+	) bool
+}
+
+// RequestInfo provides additional information about incoming requests.
+type RequestInfo struct {
+	// The original cookie headers included in the client request. For security
+	// and privacy reasons, these are automatically removed from the client
+	// request before plugins get an opportunity to handle it.
+	OriginalCookieHeaders []string
+
+	// The original URL requested by the client, before any redirection by the
+	// relay.
+	OriginalURL *url.URL
+
+	// If true, a response has already been sent to the client.
+	Serviced bool
 }
 
 /*

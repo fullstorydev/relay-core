@@ -101,7 +101,15 @@ func (plug contentBlockerPlugin) Name() string {
 	return pluginName
 }
 
-func (plug contentBlockerPlugin) HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool {
+func (plug contentBlockerPlugin) HandleRequest(
+	response http.ResponseWriter,
+	request *http.Request,
+	info traffic.RequestInfo,
+) bool {
+	if info.Serviced {
+		return false
+	}
+
 	if serviced := plug.blockHeaderContent(response, request); serviced {
 		return true
 	}

@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/traffic"
@@ -31,12 +33,46 @@ func (f pathsPluginFactory) Name() string {
 func (f pathsPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
 	plugin := &pathsPlugin{}
 
+	if rule, err := f.readTrafficPathsRule(env); err != nil {
+		return nil, err
+	} else if rule != nil {
+		plugin.rules = append(plugin.rules, rule)
+	}
+
+	if rules, err := f.readSpecialsRule(env); err != nil {
+		return nil, err
+	} else {
+		plugin.rules = append(plugin.rules, rules...)
+	}
+
+	if len(plugin.rules) == 0 {
+		return nil, nil
+	}
+
+	for _, rule := range plugin.rules {
+		logger.Printf(`Paths plugin will replace all "%s" with "%s"`, rule.match, rule.replacement)
+	}
+
+	return plugin, nil
+}
+
+// readTrafficPathsRule reads a path rule defined using the TRAFFIC_PATHS_MATCH
+// and TRAFFIC_PATHS_REPLACEMENT environment variables, if one exists. These
+// rules match against the path portion of a URL and, if a match is found,
+// replace the URL's path. (The other portions of the URL remain the same.)
+// Returns nil if no meaningful rule is defined.
+func (f pathsPluginFactory) readTrafficPathsRule(env *commands.Environment) (*pathRule, error) {
+	rule := &pathRule{
+		target: pathTarget,
+	}
+
 	// Read the replacement value, which is just a literal string. If it's not
-	// present, we don't have anything to do, so we just disable the plugin.
+	// present, the rule wouldn't do anything, regardless of whether
+	// TRAFFIC_PATHS_MATCH is present, so we just return.
 	if replacement, ok := env.LookupOptional("TRAFFIC_PATHS_REPLACEMENT"); !ok {
 		return nil, nil
 	} else {
-		plugin.replacement = replacement
+		rule.replacement = replacement
 	}
 
 	// Read the match value, which is a Go regular expression. Since we know a
@@ -46,32 +82,123 @@ func (f pathsPluginFactory) New(env *commands.Environment) (traffic.Plugin, erro
 		if match, err := regexp.Compile(value); err != nil {
 			return fmt.Errorf("Could not compile regular expression: %v", err)
 		} else {
-			plugin.match = match
+			rule.match = match
 			return nil
 		}
 	}); err != nil {
 		return nil, err
 	}
 
-	logger.Printf("Paths plugin will replace all \"%s\" with \"%s\"", plugin.match, plugin.replacement)
+	return rule, nil
+}
 
-	return plugin, nil
+// readSpecialsRule reads path rules defined using the TRAFFIC_RELAY_SPECIALS
+// environment variable, if one exists. These rules match against the path
+// portion of a URL and, if a match is found, replace the entire URL. (Query
+// params are left untouched.) Returns an empty list if no such rules are
+// defined.
+func (f pathsPluginFactory) readSpecialsRule(env *commands.Environment) ([]*pathRule, error) {
+	var rules []*pathRule
+
+	if err := env.ParseOptional("TRAFFIC_RELAY_SPECIALS", func(key string, value string) error {
+		specialsTokens := strings.Split(value, " ")
+		if len(specialsTokens)%2 != 0 {
+			return fmt.Errorf("Last key has no value")
+		}
+
+		for i := 0; i < len(specialsTokens); i += 2 {
+			matchVar := specialsTokens[i]
+			replacement := specialsTokens[i+1]
+
+			match, err := regexp.Compile(matchVar)
+			if err != nil {
+				return fmt.Errorf("Could not compile regular expression \"%v\": %v", matchVar, err)
+			}
+
+			rules = append(rules, &pathRule{
+				match:       match,
+				replacement: replacement,
+				target:      urlTarget,
+			})
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return rules, nil
 }
 
 type pathsPlugin struct {
+	rules []*pathRule
+}
+
+type pathRule struct {
 	match       *regexp.Regexp
 	replacement string
+	target      pathRuleTarget
+}
+
+type pathRuleTarget int64
+
+const (
+	pathTarget pathRuleTarget = iota
+	urlTarget
+)
+
+func (target pathRuleTarget) String() string {
+	switch target {
+	case pathTarget:
+		return "path"
+	case urlTarget:
+		return "URL"
+	default:
+		return "(unknown target)"
+	}
 }
 
 func (plug pathsPlugin) Name() string {
 	return pluginName
 }
 
-func (plug pathsPlugin) HandleRequest(response http.ResponseWriter, request *http.Request, serviced bool) bool {
-	if plug.match == nil {
+func (plug pathsPlugin) HandleRequest(
+	response http.ResponseWriter,
+	request *http.Request,
+	info traffic.RequestInfo,
+) bool {
+	if info.Serviced {
 		return false
 	}
-	request.URL.Path = plug.match.ReplaceAllString(request.URL.Path, plug.replacement)
+
+	for _, rule := range plug.rules {
+		switch rule.target {
+		case pathTarget:
+			// If there's a match, replace the requested URL's path.
+			request.URL.Path = rule.match.ReplaceAllString(request.URL.Path, rule.replacement)
+
+		case urlTarget:
+			// If the rule matches the requested URL's path...
+			if rule.match.Match([]byte(request.URL.Path)) == false {
+				break
+			}
+
+			// ...then replace the *entire URL, except for query params*. The
+			// path is provided as an input to ReplaceAllString() so that the
+			// replacement can reference capture groups from the path.
+			urlVal := rule.match.ReplaceAllString(request.URL.Path, rule.replacement)
+			newURL, err := url.Parse(urlVal)
+			if err != nil {
+				logger.Printf("Failed to create URL for path rule %v: %v", rule.match, err)
+			} else {
+				request.URL.Scheme = newURL.Scheme
+				request.URL.Host = newURL.Host
+				request.Host = newURL.Host
+				request.URL.Path = newURL.Path
+			}
+		}
+	}
+
 	return false
 }
 

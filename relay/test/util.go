@@ -7,6 +7,7 @@ import (
 	"github.com/fullstorydev/relay-core/relay"
 	"github.com/fullstorydev/relay-core/relay/commands"
 	"github.com/fullstorydev/relay-core/relay/traffic"
+	"github.com/fullstorydev/relay-core/relay/traffic/plugin-loader"
 )
 
 // WithCatcherAndRelay is a helper function that wraps the setup and teardown
@@ -61,7 +62,7 @@ func setupRelay(
 		return nil, err
 	}
 
-	trafficPlugins, err := traffic.LoadPlugins(pluginFactories, env)
+	trafficPlugins, err := plugin_loader.Load(pluginFactories, env)
 	if err != nil {
 		return nil, err
 	}

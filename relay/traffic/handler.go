@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -42,9 +41,28 @@ func NewHandler(config *RelayConfig, trafficPlugins []Plugin) *Handler {
 }
 
 func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	// Drop all cookies; because the relay generally runs in a first-party
+	// context, the risk of receiving cookies intended for other services is
+	// high, so relaying them is a potential privacy and security risk. (In
+	// cases where a particular cookie is known to be safe, it can be
+	// allowlisted using the Cookies plugin.)
+	originalCookieHeaders := append([]string{}, request.Header.Values("Cookie")...)
+	request.Header.Del("Cookie")
+
+	// Rewrite the request URL to point to the relay target. Plugins may change
+	// these values to direct certain requests differently.
+	originalURL := *request.URL
+	request.URL.Scheme = handler.config.TargetScheme
+	request.URL.Host = handler.config.TargetHost
+	request.Host = handler.config.TargetHost
+
 	serviced := false
 	for _, trafficPlugin := range handler.plugins {
-		if trafficPlugin.HandleRequest(response, request, serviced) {
+		if trafficPlugin.HandleRequest(response, request, RequestInfo{
+			OriginalCookieHeaders: originalCookieHeaders,
+			OriginalURL:           &originalURL,
+			Serviced:              serviced,
+		}) {
 			serviced = true
 		}
 	}
@@ -65,9 +83,14 @@ func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, client
 	if serviced {
 		return false
 	}
-	if handler.config.TargetScheme == "" || handler.config.TargetHost == "" {
-		return false
+
+	if !clientRequest.URL.IsAbs() {
+		http.Error(clientResponse, fmt.Sprintf("Cannot respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
+		return true
 	}
+
+	handler.addRelayHeaders(clientRequest)
+
 	if clientRequest.Header.Get("Upgrade") == "websocket" {
 		return handler.handleUpgrade(clientResponse, clientRequest)
 	} else {
@@ -75,51 +98,7 @@ func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, client
 	}
 }
 
-func (handler *Handler) prepRelayRequest(clientRequest *http.Request) {
-	clientRequest.URL.Scheme = handler.config.TargetScheme
-	clientRequest.URL.Host = handler.config.TargetHost
-	clientRequest.Host = handler.config.TargetHost
-
-	if len(handler.config.SpecialPaths) > 0 {
-		for _, special := range handler.config.SpecialPaths {
-			if special.Match.Match([]byte(clientRequest.URL.Path)) == false {
-				continue
-			}
-			urlVal := special.Match.ReplaceAllString(clientRequest.URL.Path, special.Replacement)
-			newURL, err := url.Parse(urlVal)
-			if err != nil {
-				logger.Printf("Failed to create URL for special %v: %v", special.Match, err)
-			} else {
-				clientRequest.URL.Scheme = newURL.Scheme
-				clientRequest.URL.Host = newURL.Host
-				clientRequest.Host = newURL.Host
-				clientRequest.URL.Path = newURL.Path
-			}
-		}
-	} else if len(handler.config.OriginOverride) > 0 {
-		clientRequest.Header.Set(
-			"Origin",
-			fmt.Sprintf("%v://%v", handler.config.TargetScheme, handler.config.OriginOverride),
-		)
-	}
-	if len(handler.config.RelayedCookies) == 0 {
-		clientRequest.Header.Del("Cookie")
-	} else {
-		var cookieString strings.Builder
-		first := true
-		for _, cookie := range clientRequest.Cookies() {
-			if _, ok := handler.config.RelayedCookies[cookie.Name]; ok == false {
-				continue
-			}
-			if first == false {
-				cookieString.WriteString("; ")
-			}
-			cookieString.WriteString(cookie.String())
-			first = false
-		}
-		clientRequest.Header.Set("Cookie", cookieString.String())
-	}
-
+func (handler *Handler) addRelayHeaders(clientRequest *http.Request) {
 	// Add X-Forwarded-* headers
 	remoteAddrTokens := strings.Split(clientRequest.RemoteAddr, ":")
 	clientRequest.Header.Add("X-Forwarded-For", remoteAddrTokens[0])
@@ -133,12 +112,6 @@ func (handler *Handler) prepRelayRequest(clientRequest *http.Request) {
 }
 
 func (handler *Handler) handleHttp(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
-	handler.prepRelayRequest(clientRequest)
-	if !clientRequest.URL.IsAbs() {
-		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
-		return true
-	}
-
 	targetResponse, err := handler.transport.RoundTrip(clientRequest)
 	if err != nil {
 		logger.Printf("Cannot read response from server %v", err)
@@ -173,12 +146,6 @@ func (handler *Handler) handleHttp(clientResponse http.ResponseWriter, clientReq
 }
 
 func (handler *Handler) handleUpgrade(clientResponse http.ResponseWriter, clientRequest *http.Request) bool {
-	handler.prepRelayRequest(clientRequest)
-	if !clientRequest.URL.IsAbs() {
-		logger.Println("Url was not absolute", clientRequest.URL.Host)
-		http.Error(clientResponse, fmt.Sprintf("This plugin can not respond to relative (non-absolute) requests: %v", clientRequest.URL), 500)
-		return true
-	}
 	logger.Println("Upgrading to websocket:", clientRequest.URL)
 
 	// Connect to the target WS service

@@ -1,9 +1,9 @@
-package test_interceptor_plugin
+package headers_plugin
 
-// The TestInterceptor plugin offers a hook that allows tests to observe the
-// requests received by the relay. In production, this plugin is not useful.
+// The Headers plugin provides the capability to transform request headers.
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,47 +13,53 @@ import (
 )
 
 var (
-	Factory    testInterceptorPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-test-interceptor] ", 0)
-	pluginName = "TestInterceptor"
+	Factory    headersPluginFactory
+	logger     = log.New(os.Stdout, "[traffic-headers] ", 0)
+	pluginName = "Headers"
 )
 
-type HandleRequestListener func(request *http.Request)
+type headersPluginFactory struct{}
 
-func NewFactoryWithListener(listener HandleRequestListener) traffic.PluginFactory {
-	return testInterceptorPluginFactory{
-		listener: listener,
+func (f headersPluginFactory) Name() string {
+	return pluginName
+}
+
+func (f headersPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
+	plugin := &headersPlugin{}
+
+	if originOverrideVal, ok := env.LookupOptional("TRAFFIC_RELAY_ORIGIN_OVERRIDE"); !ok {
+		return nil, nil
+	} else {
+		plugin.originOverride = originOverrideVal
 	}
+
+	logger.Printf(`Headers plugin will override origin to "%s"`, plugin.originOverride)
+
+	return plugin, nil
 }
 
-type testInterceptorPluginFactory struct {
-	listener HandleRequestListener
+type headersPlugin struct {
+	originOverride string
 }
 
-func (f testInterceptorPluginFactory) Name() string {
+func (plug headersPlugin) Name() string {
 	return pluginName
 }
 
-func (f testInterceptorPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
-	return &testInterceptorPlugin{
-		listener: f.listener,
-	}, nil
-}
-
-type testInterceptorPlugin struct {
-	listener HandleRequestListener
-}
-
-func (plug testInterceptorPlugin) Name() string {
-	return pluginName
-}
-
-func (plug testInterceptorPlugin) HandleRequest(
+func (plug headersPlugin) HandleRequest(
 	response http.ResponseWriter,
 	request *http.Request,
 	info traffic.RequestInfo,
 ) bool {
-	plug.listener(request)
+	if info.Serviced {
+		return false
+	}
+
+	request.Header.Set(
+		"Origin",
+		fmt.Sprintf("%v://%v", request.URL.Scheme, plug.originOverride),
+	)
+
 	return false
 }
 

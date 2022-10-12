@@ -1,20 +1,29 @@
-package traffic
+package plugin_loader
 
 import (
 	"fmt"
+	"log"
+	"os"
 
 	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
+var logger = log.New(os.Stdout, "[traffic-plugin-loader] ", 0)
+
 // Load creates and configures a set of traffic plugins.
-func LoadPlugins(
-	pluginFactories []PluginFactory,
+func Load(
+	pluginFactories []traffic.PluginFactory,
 	env *commands.Environment,
-) ([]Plugin, error) {
-	trafficPlugins := []Plugin{}
+) ([]traffic.Plugin, error) {
+	trafficPlugins := []traffic.Plugin{}
 
 	for _, factory := range pluginFactories {
 		logger.Printf("Loading plugin: %s\n", factory.Name())
+
+		if !pluginFactoryIsRegistered(factory) {
+			return nil, fmt.Errorf(`Traffic plugin "%v" is not registered; add it to registry.go.`, factory.Name())
+		}
 
 		plugin, err := factory.New(env)
 		if err != nil {
@@ -29,6 +38,24 @@ func LoadPlugins(
 	}
 
 	return trafficPlugins, nil
+}
+
+// pluginFactoryIsRegistered returns true if the provided plugin factory appears
+// in one of the groups of traffic plugins in registry.go. Checking this helps
+// ensure that newly-developed plugins get registered and are available for use
+// in production. (And not just, say, in unit tests.)
+func pluginFactoryIsRegistered(factory traffic.PluginFactory) bool {
+	for _, registeredFactory := range DefaultPlugins {
+		if factory.Name() == registeredFactory.Name() {
+			return true
+		}
+	}
+	for _, registeredFactory := range TestPlugins {
+		if factory.Name() == registeredFactory.Name() {
+			return true
+		}
+	}
+	return false
 }
 
 /*
