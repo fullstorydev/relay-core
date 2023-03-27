@@ -1,0 +1,234 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Bearing tokyo heimdall rest ecs cluster.
+Parameters:
+  BearingEnv:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - prod
+    Description: deploy env
+  Image:
+    Type: String
+    Default: tokyo-bolombolo
+  Tag:
+    Type: String
+  ServiceName:
+    Type: String
+    Default: Bolombolo
+  ContainerPort:
+    Type: Number
+    Default: 8990
+  ContainerPortName:
+    Type: String
+    Default: app-port
+  LoadBalancerPort:
+    Type: Number
+    Default: 8990
+  HealthCheckPath:
+    Type: String
+    Default: /
+  ReplicaNumeber:
+    Type: Number
+    Default: 2
+Mappings:
+  DnsConfiguration:
+    prod:
+      DomainName: "bolombolo.bearingserver.com"
+      HostedZoneId: Z3Q1ST6BIHR271
+  EnvMap:
+    prod:
+      RelayPort: 8990
+      RelayTarget: https://rs.fullstory.com
+      RelaySpecials: ^/s/fs\.js https://edge.fullstory.com/s/fs.js
+
+Resources:
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: LogGroup
+    Properties:
+      Family: !Join ['', [!Ref ServiceName, !Ref BearingEnv, TaskDefinition]]
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 2048
+      Memory: 4GB
+      ExecutionRoleArn:
+        Fn::ImportValue:
+          !Sub tokyo-${BearingEnv}-task-execution-role
+      ContainerDefinitions:
+        - Name: !Join ['', [!Ref ServiceName, !Ref BearingEnv]]
+          Image: !Join ['', [!Ref AWS::AccountId, '.dkr.ecr.', !Ref AWS::Region, '.amazonaws.com/', !Ref Image, ':', !Ref Tag]]
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Name: !Ref ContainerPortName
+          Environment:
+            - Name: RELAY_PORT
+              Value: !FindInMap [EnvMap, Ref: BearingEnv, RelayPort]
+            - Name: TRAFFIC_RELAY_TARGET
+              Value: !FindInMap [EnvMap, Ref: BearingEnv, RelayTarget]
+            - Name: TRAFFIC_RELAY_SPECIALS
+              Value: !FindInMap [EnvMap, Ref: BearingEnv, RelaySpecials]
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref LogGroup
+              awslogs-stream-prefix: ecs
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['/', [/tokyo, !Ref BearingEnv, !Ref ServiceName, "service"]]
+      RetentionInDays: 120
+      KmsKeyId: !ImportValue tokyo-rds-logs-kms-key-arn
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ListenerHTTPS
+    Properties:
+      ServiceName: !Join ['', [!Ref ServiceName, !Ref BearingEnv]]
+      Cluster:
+        Fn::ImportValue:
+          !Sub tokyo-${BearingEnv}-cluster
+      TaskDefinition: !Ref TaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      DesiredCount: !Ref ReplicaNumeber
+      HealthCheckGracePeriodSeconds: 1800
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - Fn::ImportValue:
+                !Sub tokyo-${BearingEnv}-private-subnet-one
+            - Fn::ImportValue:
+                !Sub tokyo-${BearingEnv}-private-subnet-two
+          SecurityGroups:
+            - Fn::ImportValue:
+                !Sub tokyo-${BearingEnv}-task-sg-id
+      LoadBalancers:
+        - ContainerName: !Join ['', [!Ref ServiceName, !Ref BearingEnv]]
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckTimeoutSeconds: 5
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200-499
+      Name: !Join ['', [!Ref ServiceName, !Ref BearingEnv, TargetGroup]]
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+      TargetType: ip
+      VpcId:
+        Fn::ImportValue:
+          !Sub tokyo-${BearingEnv}-vpc-arn
+
+  ListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn:
+        Fn::ImportValue:
+          !Sub tokyo-${BearingEnv}-alb-arn
+      Port: !Ref LoadBalancerPort
+      Protocol: HTTP
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['/', [/tokyo, !Ref BearingEnv, !Ref ServiceName, "apiStage"]]
+      RetentionInDays: 120
+      KmsKeyId: !ImportValue tokyo-rds-logs-kms-key-arn
+
+  ServiceApiGateway:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Join ['', [!Ref ServiceName, !Ref BearingEnv, ServiceApiGateway]]
+      Description: Service apigateway
+      ProtocolType: HTTP
+
+  APIRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ServiceApiGateway
+      RouteKey: 'ANY /{proxy+}'
+      Target: !Join ['/', ['integrations', !Ref APIIntegration]]
+
+  APIIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ServiceApiGateway
+      Description: Private ALB Integration
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      ConnectionType: VPC_LINK
+      ConnectionId:
+        Fn::ImportValue:
+          !Sub tokyo-${BearingEnv}-vpc-private-link-id
+      IntegrationUri:
+        !Ref ListenerHTTPS
+      PayloadFormatVersion: '1.0'
+
+  APIStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiLogGroup.Arn
+        Format: >-
+          $context.identity.sourceIp - - [$context.requestTime] "$context.httpMethod $context.path $context.routeKey $context.protocol" $context.status $context.responseLength $context.requestId
+      StageName: $default
+      AutoDeploy: true
+      ApiId: !Ref ServiceApiGateway
+
+  ElasticLoadBalancingCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      ValidationMethod: DNS
+      DomainName: !FindInMap [DnsConfiguration, Ref: BearingEnv, DomainName]
+      DomainValidationOptions:
+        - DomainName: !FindInMap [DnsConfiguration, Ref: BearingEnv, DomainName]
+          HostedZoneId: !FindInMap [DnsConfiguration, Ref: BearingEnv, HostedZoneId]
+
+  ApiDomainName:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: !FindInMap [DnsConfiguration, Ref: BearingEnv, DomainName]
+      DomainNameConfigurations:
+        - CertificateArn: !Ref ElasticLoadBalancingCertificate
+          SecurityPolicy: TLS_1_2
+
+  ApiBasePathMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      ApiId: !Ref ServiceApiGateway
+      DomainName: !Ref ApiDomainName
+      Stage: !Ref APIStage
+
+  Route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !FindInMap [DnsConfiguration, Ref: BearingEnv, DomainName]
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt ApiDomainName.RegionalHostedZoneId
+        DNSName: !GetAtt ApiDomainName.RegionalDomainName
+        EvaluateTargetHealth: true
+      HostedZoneId: !FindInMap [DnsConfiguration, Ref: BearingEnv, HostedZoneId]
