@@ -38,12 +38,12 @@ name `relay:image`; you'll need to substitute in the name of the image you
 obtained above. For example, if you built a local Docker image, you'll want to
 replace `relay:image` with `relay:local-v0`.
 
-Running Relay requires that you set one required option: the target. This
-option tells Relay where to direct the traffic it receives. It's specified
-as a URL, but you only need to provide the protocol and host; the path and query
-parameters are derived from incoming requests. As a convenience, you can specify
-the target by starting the container with the `TRAFFIC_RELAY_TARGET` environment
-variable set appropriately:
+To run Relay, you must set one required option: the target. This option tells
+Relay where to direct the traffic it receives. It's specified as a URL, but you
+only need to provide the protocol and host; the path and query parameters are
+derived from incoming requests. As a convenience, you can specify the target by
+starting the container with the `TRAFFIC_RELAY_TARGET` environment variable set
+appropriately:
 
 	docker run -e "TRAFFIC_RELAY_TARGET=https://target.example:12346" --publish 8990:8990 -it --rm relay:image
 
@@ -97,4 +97,4 @@ using the `--config` option:
 	./dist/relay --config /etc/relay/relay.yaml
 
 If you plan to add new functionality to Relay, it's important to understand
-its plugin-based architecture; you can read more about that [here](plugins.md].
+its plugin-based architecture; you can read more about that [here](plugins.md).
