@@ -14,29 +14,32 @@ import (
 	"github.com/fullstorydev/relay-core/relay/version"
 )
 
-func TestContentBlockerBlocksContent(t *testing.T) {
+func TestContentBlocking(t *testing.T) {
 	testCases := []contentBlockerTestCase{
 		{
 			desc: "Body content can be excluded",
-			env: map[string]string{
-				"TRAFFIC_EXCLUDE_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-			},
+			config: `block-content:
+                        body:
+                          - exclude: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+            `,
 			originalBody: `{ "content": "Excluded IP address = 215.1.0.335." }`,
 			expectedBody: `{ "content": "Excluded IP address = ." }`,
 		},
 		{
 			desc: "Body content can be masked",
-			env: map[string]string{
-				"TRAFFIC_MASK_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-			},
+			config: `block-content:
+                        body:
+                          - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+            `,
 			originalBody: `{ "content": "Excluded IP address = 215.1.0.335." }`,
 			expectedBody: `{ "content": "Excluded IP address = ***********." }`,
 		},
 		{
 			desc: "Header content can be excluded",
-			env: map[string]string{
-				"TRAFFIC_EXCLUDE_HEADER_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-			},
+			config: `block-content:
+                        header:
+                          - exclude: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+            `,
 			originalHeaders: map[string]string{
 				"X-Forwarded-For": "foo.com,192.168.0.1,bar.com",
 			},
@@ -46,9 +49,10 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Header content can be masked",
-			env: map[string]string{
-				"TRAFFIC_MASK_HEADER_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-			},
+			config: `block-content:
+                        header:
+                          - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+            `,
 			originalHeaders: map[string]string{
 				"X-Forwarded-For": "foo.com,192.168.0.1,bar.com",
 			},
@@ -58,10 +62,11 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Header values are blocked but header names are not",
-			env: map[string]string{
-				"TRAFFIC_EXCLUDE_HEADER_CONTENT": `(?i)BAR`,
-				"TRAFFIC_MASK_HEADER_CONTENT":    `(?i)FOO`,
-			},
+			config: `block-content:
+                        header:
+                          - exclude: '(?i)BAR'
+                          - mask: '(?i)FOO'
+            `,
 			originalHeaders: map[string]string{
 				"X-Barrier":  "foo bar baz",
 				"X-Football": "foo bar baz",
@@ -73,21 +78,45 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 		},
 		{
 			desc: "Exclusion takes priority over masking",
-			env: map[string]string{
-				"TRAFFIC_EXCLUDE_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-				"TRAFFIC_MASK_BODY_CONTENT":    `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-			},
+			config: `block-content:
+                        body:
+                          - exclude: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+                          - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+            `,
 			originalBody: `{ "content": "Excluded IP address = 215.1.0.335." }`,
 			expectedBody: `{ "content": "Excluded IP address = ." }`,
 		},
 		{
 			desc: "Complex configurations are supported",
-			env: map[string]string{
-				"TRAFFIC_EXCLUDE_BODY_CONTENT":   `(?i)EXCLUDED`,
-				"TRAFFIC_MASK_BODY_CONTENT":      `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-				"TRAFFIC_EXCLUDE_HEADER_CONTENT": `(?i)DELETED`,
-				"TRAFFIC_MASK_HEADER_CONTENT":    `(foo|bar)`,
+			config: `block-content:
+                        body:
+                          - exclude: '(?i)EXCLUDED'
+                          - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+                        header:
+                          - exclude: '(?i)DELETED'
+                          - mask: '(foo|bar)'
+            `,
+			originalBody: `{ "content": "Excluded, deleted foo bar IP address = 215.1.0.335." }`,
+			expectedBody: `{ "content": ", deleted foo bar IP address = ***********." }`,
+			originalHeaders: map[string]string{
+				"X-Forwarded-For":  "192.168.0.1",
+				"X-Headerfoobar":   "bar foo baz bar baz foobar",
+				"X-Special-Header": "Some EXCLUDED, DELETED content",
 			},
+			expectedHeaders: map[string]string{
+				"X-Forwarded-For":  "192.168.0.1",
+				"X-Headerfoobar":   "*** *** baz *** baz ******",
+				"X-Special-Header": "Some EXCLUDED,  content",
+			},
+		},
+		{
+			desc: "TRAFFIC_EXCLUDE_* and TRAFFIC_MASK_* are supported",
+			config: `block-content:
+                        TRAFFIC_EXCLUDE_BODY_CONTENT: '(?i)EXCLUDED'
+                        TRAFFIC_MASK_BODY_CONTENT: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+                        TRAFFIC_EXCLUDE_HEADER_CONTENT: '(?i)DELETED'
+                        TRAFFIC_MASK_HEADER_CONTENT: '(foo|bar)'
+            `,
 			originalBody: `{ "content": "Excluded, deleted foo bar IP address = 215.1.0.335." }`,
 			expectedBody: `{ "content": ", deleted foo bar IP address = ***********." }`,
 			originalHeaders: map[string]string{
@@ -108,15 +137,16 @@ func TestContentBlockerBlocksContent(t *testing.T) {
 	}
 }
 
-func TestContentBlockerBlocksWebsockets(t *testing.T) {
-	env := map[string]string{
-		"TRAFFIC_MASK_BODY_CONTENT": `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+`,
-	}
+func TestBlockPluginBlocksWebsockets(t *testing.T) {
+	config := `block-content:
+                  body:
+                    - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+    `
 	plugins := []traffic.PluginFactory{
 		content_blocker_plugin.Factory,
 	}
 
-	test.WithCatcherAndRelay(t, env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, config, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 		request, err := http.NewRequest(
 			"POST",
 			relayService.HttpUrl(),
@@ -148,7 +178,7 @@ func TestContentBlockerBlocksWebsockets(t *testing.T) {
 
 type contentBlockerTestCase struct {
 	desc            string
-	env             map[string]string
+	config          string
 	originalBody    string
 	expectedBody    string
 	originalHeaders map[string]string
@@ -172,7 +202,7 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 
 	expectedHeaders[content_blocker_plugin.PluginVersionHeaderName] = version.RelayRelease
 
-	test.WithCatcherAndRelay(t, testCase.env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+	test.WithCatcherAndRelay(t, testCase.config, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 		request, err := http.NewRequest(
 			"POST",
 			relayService.HttpUrl(),

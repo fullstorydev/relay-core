@@ -13,6 +13,8 @@ jobs:
           fetch-depth: 0
       - name: Set up go
         uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
       - name: Build and release
         uses: goreleaser/goreleaser-action@v3
         with:
@@ -30,5 +32,5 @@ jobs:
           name: ${{ github.event.repository.full_name }}/${{ github.event.repository.name }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          registry: docker.pkg.github.com
+          registry: ghcr.io
           tags: ${{ github.ref_name }}

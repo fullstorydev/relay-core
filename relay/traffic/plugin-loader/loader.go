@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
@@ -14,7 +14,7 @@ var logger = log.New(os.Stdout, "[traffic-plugin-loader] ", 0)
 // Load creates and configures a set of traffic plugins.
 func Load(
 	pluginFactories []traffic.PluginFactory,
-	env *commands.Environment,
+	configFile *config.File,
 ) ([]traffic.Plugin, error) {
 	trafficPlugins := []traffic.Plugin{}
 
@@ -25,7 +25,7 @@ func Load(
 			return nil, fmt.Errorf(`Traffic plugin "%v" is not registered; add it to registry.go.`, factory.Name())
 		}
 
-		plugin, err := factory.New(env)
+		plugin, err := factory.New(configFile.GetOrAddSection(factory.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("Traffic plugin \"%v\" configuration error: %v", factory.Name(), err)
 		}

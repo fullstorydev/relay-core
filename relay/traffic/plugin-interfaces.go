@@ -4,23 +4,24 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 )
 
 // PluginFactory is the interface that the relay uses to create plugin
 // instances.
 type PluginFactory interface {
-	// Name returns a human readable name for this plugin, like "Logging" or
-	// "Attack detector".
+	// Name returns a human readable name for this plugin, like "logging" or
+	// "attack-detector". This name serves as the YAML key for the plugin's
+	// section of the configuration file.
 	Name() string
 
 	// New configures and returns an instance of this plugin, or an error if
-	// configuration failed. Configuration options are read from the given
-	// environment.
+	// configuration failed. Configuration options are read from the provided
+	// configuration file section.
 	//
 	// Factories may return nil if the plugin should be inactive given the
 	// provided configuration.
-	New(env *commands.Environment) (Plugin, error)
+	New(configSection *config.Section) (Plugin, error)
 }
 
 // Plugin is the interface exposed by plugin instances.

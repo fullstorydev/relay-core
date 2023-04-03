@@ -15,39 +15,63 @@ import (
 func TestRelayedCookies(t *testing.T) {
 	testCases := []struct {
 		desc                  string
-		env                   map[string]string
+		config                string
 		originalCookieHeaders []string
 		expectedCookieHeaders []string
 	}{
 		{
 			desc:                  "No cookies are relayed by default",
-			env:                   map[string]string{},
 			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43", "_gat=1"},
 			expectedCookieHeaders: nil,
 		},
 		{
 			desc: "Multiple Cookie headers are merged",
-			env: map[string]string{
-				"TRAFFIC_RELAY_COOKIES": "SPECIAL_ID token _gat",
-			},
+			config: `cookies:
+                        allowlist:
+                          - SPECIAL_ID
+                          - token
+                          - _gat
+            `,
 			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43", "_gat=1"},
 			expectedCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; _gat=1"},
 		},
 		{
 			desc: "Only allowlisted cookies are relayed",
-			env: map[string]string{
-				"TRAFFIC_RELAY_COOKIES": "SPECIAL_ID foo _gat",
-			},
+			config: `cookies:
+                        allowlist:
+                          - SPECIAL_ID
+                          - foo
+                          - _gat
+            `,
 			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; foo=bar", "_gat=1; bar=foo"},
 			expectedCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; foo=bar; _gat=1"},
 		},
 		{
 			desc: "A Cookie header is dropped entirely when no cookies match",
-			env: map[string]string{
-				"TRAFFIC_RELAY_COOKIES": "bar",
-			},
+			config: `cookies:
+                        allowlist:
+                          - bar
+            `,
 			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; foo=bar", "_gat=1; bar=foo"},
 			expectedCookieHeaders: []string{"bar=foo"},
+		},
+		{
+			desc: "TRAFFIC_RELAY_COOKIES syntax is supported",
+			config: `cookies:
+                        TRAFFIC_RELAY_COOKIES: SPECIAL_ID _gat
+            `,
+			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; _gat=1"},
+			expectedCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; _gat=1"},
+		},
+		{
+			desc: "TRAFFIC_RELAY_COOKIES can be combined with the normal allowlist",
+			config: `cookies:
+                        allowlist:
+                          - safe_cookie
+                        TRAFFIC_RELAY_COOKIES: SPECIAL_ID _gat
+            `,
+			originalCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; token=u32t4o3tb3gg43; _gat=1; safe_cookie=xyz"},
+			expectedCookieHeaders: []string{"SPECIAL_ID=298zf09hf012fh2; _gat=1; safe_cookie=xyz"},
 		},
 	}
 
@@ -56,7 +80,7 @@ func TestRelayedCookies(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		test.WithCatcherAndRelay(t, testCase.env, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+		test.WithCatcherAndRelay(t, testCase.config, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
 			request, err := http.NewRequest("GET", relayService.HttpUrl(), nil)
 			if err != nil {
 				t.Errorf("Test '%v': Error creating request: %v", testCase.desc, err)

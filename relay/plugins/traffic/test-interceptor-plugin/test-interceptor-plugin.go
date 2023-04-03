@@ -1,21 +1,22 @@
+// This plugin offers a hook that allows tests to observe the requests received
+// by the relay. In production, this plugin is not useful.
+
 package test_interceptor_plugin
 
-// The TestInterceptor plugin offers a hook that allows tests to observe the
-// requests received by the relay. In production, this plugin is not useful.
-
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 )
 
 var (
 	Factory    testInterceptorPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-test-interceptor] ", 0)
-	pluginName = "TestInterceptor"
+	pluginName = "test-interceptor"
+	logger     = log.New(os.Stdout, fmt.Sprintf("[traffic-%s] ", pluginName), 0)
 )
 
 type HandleRequestListener func(request *http.Request)
@@ -34,7 +35,7 @@ func (f testInterceptorPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f testInterceptorPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
+func (f testInterceptorPluginFactory) New(configFile *config.Section) (traffic.Plugin, error) {
 	return &testInterceptorPlugin{
 		listener: f.listener,
 	}, nil

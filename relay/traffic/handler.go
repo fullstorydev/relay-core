@@ -23,12 +23,12 @@ var logger = log.New(os.Stdout, "[relay-traffic] ", 0)
 // process itself, and can be extended using plugins to add additional
 // functionality.
 type Handler struct {
-	config    *RelayConfig
+	config    *RelayOptions
 	plugins   []Plugin
 	transport *http.Transport
 }
 
-func NewHandler(config *RelayConfig, trafficPlugins []Plugin) *Handler {
+func NewHandler(config *RelayOptions, trafficPlugins []Plugin) *Handler {
 	return &Handler{
 		config:  config,
 		plugins: trafficPlugins,

@@ -15,4 +15,6 @@ FROM alpine:3.16
 RUN apk add --no-cache --update \
   ca-certificates
 COPY --from=builder /dist /dist
+COPY relay.yaml /etc/relay/relay.yaml
 ENTRYPOINT [ "/dist/relay" ]
+CMD [ "--config", "/etc/relay/relay.yaml" ]

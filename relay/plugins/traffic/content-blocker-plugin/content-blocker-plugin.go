@@ -1,35 +1,25 @@
-// The Content-Blocker plugin blocks content matching a regular expression from
-// incoming request bodies and headers. It's controlled by four environment
-// variables:
+// This plugin blocks content matching a regular expression from incoming
+// request bodies and headers. See the default 'relay.yaml' for configuration
+// examples.
 //
-// - TRAFFIC_EXCLUDE_BODY_CONTENT: If set, a regular expression that will be
-// evaluated against request bodies. Matching content will be completely deleted
-// from the request.
-// - TRAFFIC_MASK_BODY_CONTENT: If set, a regular expression that will be
-// evaluated against request bodies. Matching content will be replaced with
-// asterisks.
-// - TRAFFIC_EXCLUDE_HEADER_CONTENT: Like TRAFFIC_EXCLUDE_BODY_CONTENT, but
-// applies to header values.
-// - TRAFFIC_MASK_HEADER_CONTENT: Like TRAFFIC_MASK_BODY_CONTENT, but applies to
-// header values.
-//
-// Although EXCLUDE is more thorough, MASK has two benefits:
+// Two kinds of blocking are possible: an Exclude rule totally deletes
+// content, while a Mask rule replaces it with asterisks. Although Exclude rules
+// are more thorough, MASK has two benefits:
 //
 // - It makes it more clear that something was blocked.
 // - It does not change the positions of characters, which makes it less likely
 // to interfere with deserialization of the request body when complex encodings
 // are used.
 //
-// Whether these benefits are more important than the thoroughness of EXCLUDE
-// will depend on the application.
+// Whether these benefits are more important than the thoroughness of using an
+// Exclude rule will depend on the application.
 //
 // It's important to understand that this plugin does not understand the format
 // of the requests it processes; it simply treats the entire request body as
 // text. This makes it robust to request format changes, but it also means that
 // using a regular expression that matches JSON, HTML, or CSS syntax may corrupt
 // the request, so be careful.
-//
-// Because this plugin transforms requests, it must run before the relay plugin.
+
 package content_blocker_plugin
 
 import (
@@ -42,18 +32,23 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/fullstorydev/relay-core/relay/commands"
+	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 	"github.com/fullstorydev/relay-core/relay/version"
 )
 
 var (
 	Factory    contentBlockerPluginFactory
-	logger     = log.New(os.Stdout, "[traffic-content-blocker] ", 0)
-	pluginName = "Content-Blocker"
+	pluginName = "block-content"
+	logger     = log.New(os.Stdout, fmt.Sprintf("[traffic-%s] ", pluginName), 0)
 
 	PluginVersionHeaderName = "X-Relay-Content-Blocker-Version"
 )
+
+type ConfigBlockRule struct {
+	Exclude string
+	Mask    string
+}
 
 type contentBlockerPluginFactory struct{}
 
@@ -61,35 +56,99 @@ func (f contentBlockerPluginFactory) Name() string {
 	return pluginName
 }
 
-func (f contentBlockerPluginFactory) New(env *commands.Environment) (traffic.Plugin, error) {
-	bodyBlockers, err := newContentBlockerList(
-		env,
-		"body",
+func (f contentBlockerPluginFactory) New(configSection *config.Section) (traffic.Plugin, error) {
+	plugin := &contentBlockerPlugin{}
+
+	addRules := func(contentKind string, rules []ConfigBlockRule) error {
+		blockers := []*contentBlocker{}
+
+		for _, rule := range rules {
+			if rule.Exclude == "" && rule.Mask == "" {
+				return fmt.Errorf(`Block rule must include an Exclude or Mask property`)
+			}
+			if rule.Exclude != "" && rule.Mask != "" {
+				return fmt.Errorf(`Block rule may not include both Exclude and Mask properties`)
+			}
+
+			pattern := rule.Exclude
+			mode := excludeMode
+			if pattern == "" {
+				pattern = rule.Mask
+				mode = maskMode
+			}
+
+			if regexp, err := regexp.Compile(pattern); err != nil {
+				return fmt.Errorf(`Could not compile regular expression "%v": %v`, pattern, err)
+			} else {
+				logger.Printf("Added rule: %s %s content matching \"%s\"", mode, contentKind, regexp)
+				blockers = append(blockers, &contentBlocker{
+					mode:   mode,
+					regexp: regexp,
+				})
+			}
+		}
+
+		switch contentKind {
+		case "body":
+			plugin.bodyBlockers = append(plugin.bodyBlockers, blockers...)
+		case "header":
+			plugin.headerBlockers = append(plugin.headerBlockers, blockers...)
+		default:
+			return fmt.Errorf(`Unexpected content kind %s`, contentKind)
+		}
+
+		return nil
+	}
+
+	if err := config.ParseOptional(configSection, "body", addRules); err != nil {
+		return nil, err
+	}
+	if err := config.ParseOptional(configSection, "header", addRules); err != nil {
+		return nil, err
+	}
+
+	if err := config.ParseOptional(
+		configSection,
 		"TRAFFIC_EXCLUDE_BODY_CONTENT",
+		func(key string, value string) error {
+			return addRules("body", []ConfigBlockRule{{Exclude: value}})
+		},
+	); err != nil {
+		return nil, err
+	}
+	if err := config.ParseOptional(
+		configSection,
 		"TRAFFIC_MASK_BODY_CONTENT",
-	)
-	if err != nil {
+		func(key string, value string) error {
+			return addRules("body", []ConfigBlockRule{{Mask: value}})
+		},
+	); err != nil {
 		return nil, err
 	}
-
-	headerBlockers, err := newContentBlockerList(
-		env,
-		"header",
+	if err := config.ParseOptional(
+		configSection,
 		"TRAFFIC_EXCLUDE_HEADER_CONTENT",
+		func(key string, value string) error {
+			return addRules("header", []ConfigBlockRule{{Exclude: value}})
+		},
+	); err != nil {
+		return nil, err
+	}
+	if err := config.ParseOptional(
+		configSection,
 		"TRAFFIC_MASK_HEADER_CONTENT",
-	)
-	if err != nil {
+		func(key string, value string) error {
+			return addRules("header", []ConfigBlockRule{{Mask: value}})
+		},
+	); err != nil {
 		return nil, err
 	}
 
-	if len(bodyBlockers) == 0 && len(headerBlockers) == 0 {
+	if len(plugin.bodyBlockers) == 0 && len(plugin.headerBlockers) == 0 {
 		return nil, nil
 	}
 
-	return &contentBlockerPlugin{
-		bodyBlockers:   bodyBlockers,
-		headerBlockers: headerBlockers,
-	}, nil
+	return plugin, nil
 }
 
 type contentBlockerPlugin struct {
@@ -204,44 +263,6 @@ func (mode contentBlockerMode) String() string {
 	default:
 		return "(unknown mode)"
 	}
-}
-
-// newContentBlockerList is a helper that creates a group of related
-// contentBlocker instances as a single operation.
-func newContentBlockerList(
-	env *commands.Environment,
-	listName string,
-	excludeVar string,
-	maskVar string,
-) ([]*contentBlocker, error) {
-	var blockers []*contentBlocker
-
-	addContentBlockerWithMode := func(mode contentBlockerMode) func(key string, value string) error {
-		return func(key string, value string) error {
-			if regexp, err := regexp.Compile(value); err != nil {
-				return fmt.Errorf("Could not compile regular expression: %v", err)
-			} else {
-				blockers = append(blockers, &contentBlocker{
-					mode:   mode,
-					regexp: regexp,
-				})
-				return nil
-			}
-		}
-	}
-
-	if err := env.ParseOptional(excludeVar, addContentBlockerWithMode(excludeMode)); err != nil {
-		return nil, err
-	}
-	if err := env.ParseOptional(maskVar, addContentBlockerWithMode(maskMode)); err != nil {
-		return nil, err
-	}
-
-	for _, blocker := range blockers {
-		logger.Printf("Content-blocker plugin will %s %s content matching \"%s\"", blocker.mode, listName, blocker.regexp)
-	}
-
-	return blockers, nil
 }
 
 var maskSymbol = []byte("*")

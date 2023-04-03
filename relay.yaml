@@ -1,0 +1,121 @@
+# This is the default configuration file for the relay.
+#
+# In addition to standard YAML syntax, you can use ${VAR} to substitute in the
+# value of the environment variable VAR, and ${VAR:DEFAULT} to provide a default
+# value if the variable is unset or empty. Many environment variable
+# substitutions have been provided by default to make it easy to configure the
+# relay for simple situations.
+#
+# When the value of an environment variable is substituted, it's converted to a
+# YAML primitive. This is almost always what you want, but in rare situations
+# where you need more control you can use $(VAR) or $(VAR:DEFAULT) to substitute
+# in the original, raw values.
+
+relay:
+  # The port on which the relay service should run.
+  port: ${RELAY_PORT:8990}
+
+  # The target to which traffic should be relayed, expressed as a URL-like
+  # scheme and host - e.g. "https://relay-target.example".
+  target: ${TRAFFIC_RELAY_TARGET}
+
+  # The maximum length in bytes which should be allowed for relayed response
+  # bodies. The default is 2MiB.
+  max-body-size: ${TRAFFIC_RELAY_MAX_BODY_SIZE:2097152}
+
+block-content:
+  # The 'body' option allows you to block content from request bodies. It
+  # contains a list of objects, each of which has either an 'exclude' property
+  # or a 'mask' property. The value of the property is a regular expression. For
+  # 'exclude', content matching the regular expression will be completely
+  # removed from the request body. For 'mask', matching content will be replaced
+  # with asterisks.
+  # Example:
+  # body:
+  #   - exclude: '\$[0-9]+(\.[0-9][0-9])?'  # Dollar quantities
+  #   - exclude: 'EXCLUDE ME'
+  #   - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'  # IP-like strings
+  #   - mask: 'MASK ME'
+  body:
+
+  # The 'header' option works just like 'body', but it applies to header values
+  # instead.
+  # Example:
+  # header:
+  #   - exclude: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'  # IP-like strings
+  header:
+
+  # You can also define block rules using environment variables.
+  TRAFFIC_EXCLUDE_BODY_CONTENT: ${TRAFFIC_EXCLUDE_BODY_CONTENT}
+  TRAFFIC_MASK_BODY_CONTENT: ${TRAFFIC_MASK_BODY_CONTENT}
+  TRAFFIC_EXCLUDE_HEADER_CONTENT: ${TRAFFIC_EXCLUDE_HEADER_CONTENT}
+  TRAFFIC_MASK_HEADER_CONTENT: ${TRAFFIC_MASK_HEADER_CONTENT}
+
+cookies:
+  # The relay blocks all cookies by default. This is almost always what you
+  # want; otherwise, you may end up relaying cookies you don't expect, because
+  # the relay normally operates in a first-party context and will receive all
+  # cookies for your domain. If you need a known-safe cookie to be relayed, you
+  # can use the 'allowlist' option to allowlist it by name.
+  # Example:
+  # allowlist:
+  #   - safe_cookie
+  #   - TOKEN_ID
+  allowlist:
+
+  # You can also allowlist cookies by setting the TRAFFIC_RELAY_COOKIES
+  # environment variable to a space-separated list of cookie names.
+  # Example:
+  # TRAFFIC_RELAY_COOKIES: safe_cookie TOKEN_ID
+  TRAFFIC_RELAY_COOKIES: ${TRAFFIC_RELAY_COOKIES}
+
+
+headers:
+  # The relay forwards the Origin header as-is by default, which is usually what
+  # you want. You can use the 'override-origin' option to override the Origin
+  # header if needed.
+  # Example:
+  # override-origin: example.com
+  override-origin: ${TRAFFIC_RELAY_ORIGIN_OVERRIDE}
+
+paths:
+  # By default, the relay routes request paths to the same paths on the target,
+  # but you can use the 'routes' option to override this behavior.
+  #
+  # This option's value is a list. Each item's 'path' is a regular expression
+  # that is matched against request paths; if there's a match, the matched
+  # portion of the path is replaced by the item's 'target-path'.
+  #
+  # It's also possible to redirect particular paths to different target hosts by
+  # using 'target-url' instead of 'target-path'. When 'target-url' is used, the
+  # same substitution that 'target-path' would do is performed, but the
+  # result is interpreted as a complete URL instead of just a path.
+  #
+  # Both 'target-path' and 'target-url' can reference capture groups matched by
+  # the 'path' regular expression using Go's Regexp.Expand syntax; see here for
+  # more information:
+  #   https://golang.org/pkg/regexp/#Regexp.Expand
+  #
+  # Example:
+  # routes:
+  #   - path: '^/foo/'
+  #     target-path: '/xyz/'
+  #   - path: '^/bar/'
+  #     target-url: 'https://bar.target.example/api/'
+  routes:
+
+  # You can configure a simple 'target-path'-style route using environment
+  # variables.
+  # Example:
+  # TRAFFIC_PATHS_MATCH=^/(test)/
+  # TRAFFIC_PATHS_REPLACEMENT=/wow-${1}/
+  TRAFFIC_PATHS_MATCH: ${TRAFFIC_PATHS_MATCH}
+  TRAFFIC_PATHS_REPLACEMENT: ${TRAFFIC_PATHS_REPLACEMENT}
+
+  # You can configure multiple 'target-url'-style routes using an environment
+  # variable. The value is a space-separated list of regular expressions. The
+  # regular expressions come in pairs; the first item in each pair behaves like
+  # 'path' and the second behaves like 'target-url'.
+  # Example:
+  # TRAFFIC_RELAY_SPECIALS=^/example/(.*\.js) https://example.com/static-js/${1}
+  TRAFFIC_RELAY_SPECIALS: ${TRAFFIC_RELAY_SPECIALS}
