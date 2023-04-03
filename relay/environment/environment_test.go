@@ -143,10 +143,40 @@ func TestSubstituteVarsIntoYaml(t *testing.T) {
 			expected: `foo: bar baz`,
 		},
 		{
-			desc:     `Escaping substitution syntax is possible`,
-			env:      map[string]string{},
-			input:    `foo: $${}{bar} $$()(baz)`,
-			expected: `foo: ${bar} $(baz)`,
+			desc: `One backslash escapes substitution syntax`,
+			env: map[string]string{
+				`BAR`: `unused`,
+				`BAZ`: `unused`,
+			},
+			input:    `foo: \${BAR} \$(BAZ)`,
+			expected: `foo: ${BAR} $(BAZ)`,
+		},
+		{
+			desc: `Two backslashes do not escape substitution syntax`,
+			env: map[string]string{
+				`BAR`: `abc`,
+				`BAZ`: `123`,
+			},
+			input:    `foo: \\${BAR} \\$(BAZ)`,
+			expected: `foo: \\abc \\123`,
+		},
+		{
+			desc: `Three backslashes escape substitution syntax`,
+			env: map[string]string{
+				`BAR`: `unused`,
+				`BAZ`: `unused`,
+			},
+			input:    `foo: \\\${BAR} \\\$(BAZ)`,
+			expected: `foo: \\${BAR} \\$(BAZ)`,
+		},
+		{
+			desc: `Four backslashes do not escape substitution syntax`,
+			env: map[string]string{
+				`BAR`: `abc`,
+				`BAZ`: `123`,
+			},
+			input:    `foo: \\\\${BAR} \\\\$(BAZ)`,
+			expected: `foo: \\\\abc \\\\123`,
 		},
 	}
 

@@ -15,7 +15,7 @@ var (
 	logger = log.New(os.Stdout, "[relay] ", 0)
 
 	// Matches "${FOO}", "${FOO:BAR}", "$(FOO)", or "$(FOO:BAR)".
-	varSubstitutionRegexp = regexp.MustCompile(`(\$\{([^:}]*)(:([^}]*))?})|(\$\(([^:)]*)(:([^)]*))?\))`)
+	varSubstitutionRegexp = regexp.MustCompile(`(\\*)((\$\{([^:}]*)(:([^}]*))?})|(\$\(([^:)]*)(:([^)]*))?\)))`)
 
 	// Regular expressions matching YAML primitive values, taken from the YAML
 	// spec: https://yaml.org/spec/1.2.2/#103-core-schema
@@ -70,19 +70,39 @@ func (env *Map) SubstituteVarsIntoYaml(input string) string {
 		submatches := varSubstitutionRegexp.FindStringSubmatch(expression)
 
 		var envVar string
-		var defaultVal string
-		var escape func(input string) string
+		var defaultValue string
+		var escapeValue func(input string) string
 
-		if submatches[1] != "" {
+		// Count the number of backslashes that appear before this substitution
+		// expression. If the number is odd, this expression was escaped; all we
+		// need to do is drop the backslash that was "consumed" by escaping this
+		// expression and return everything else just as it appeared in the
+		// source test.
+		var backslashes = submatches[1]
+		if len(backslashes)%2 == 1 {
+			return submatches[0][1:]
+		}
+
+		// There were an even number of backslashes; this substitution
+		// expression wasn't escaped. We'll perform the substitution and just
+		// pass through the backslashes as-is. The code below will call this
+		// function to actually do the substitution once we determine what the
+		// value to be substituted is and which algorithm to use to escape that
+		// value.
+		substituteValue := func(value string) string {
+			return backslashes + escapeValue(value)
+		}
+
+		if submatches[3] != "" {
 			// We've got ${VAR} or ${VAR:DEFAULT}.
-			envVar = submatches[2]
-			defaultVal = submatches[4]
+			envVar = submatches[4]
+			defaultValue = submatches[6]
 
 			// For this kind of substitution, we attempt to autodetect the
 			// appropriate YAML type for the value and transform it. Note that
 			// the result is always a "primitive" YAML value, and never an
 			// arbitrary hunk of YAML syntax.
-			escape = func(value string) string {
+			escapeValue = func(value string) string {
 				// Leave values that are some kind of non-string YAML primitive
 				// unchanged.
 				if nullValueRegexp.MatchString(value) ||
@@ -106,8 +126,8 @@ func (env *Map) SubstituteVarsIntoYaml(input string) string {
 			}
 		} else {
 			// We've got $(VAR) or $(VAR:DEFAULT).
-			envVar = submatches[6]
-			defaultVal = submatches[8]
+			envVar = submatches[8]
+			defaultValue = submatches[10]
 
 			// For this kind of substitution, we just substitute in the value
 			// directly, without any transformations. This is usually not
@@ -115,26 +135,25 @@ func (env *Map) SubstituteVarsIntoYaml(input string) string {
 			// variables as a valid YAML value and deal with quotes and escape
 			// sequences, but it gives the user full control over the
 			// substitution process.
-			escape = func(value string) string {
+			escapeValue = func(value string) string {
 				return value
 			}
 		}
 
 		// As a special case, if the variable name is the empty string, just
-		// return the default value, which may also be empty. This provides a
-		// way to escape the literal string "${FOO}"; you can write it as
-		// "$${}{FOO}", and the "${}" will disappear after substitution.
+		// return the default value. The default value may also be empty, in
+		// which case the whole thing evaluates to the empty string.
 		if envVar == "" {
-			return escape(defaultVal)
+			return substituteValue(defaultValue)
 		}
 
 		// Substitute in the value of the variable from the environment. If the
 		// variable is not found, the default value is used if available.
 		// Otherwise, the result is the empty string.
 		if value, ok := env.LookupOptional(envVar); !ok {
-			return escape(defaultVal)
+			return substituteValue(defaultValue)
 		} else {
-			return escape(value)
+			return substituteValue(value)
 		}
 	})
 }
@@ -149,8 +168,8 @@ type Provider interface {
 
 // DefaultProvider tries to read environment variables from various
 // external sources. In order of precedence:
-//  * OS environment variables.
-//  * Values from any .env file that may exist.
+//   - OS environment variables.
+//   - Values from any .env file that may exist.
 type DefaultProvider struct {
 	dotEnv map[string]string
 }
