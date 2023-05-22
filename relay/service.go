@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/fullstorydev/relay-core/relay/traffic"
 )
@@ -75,8 +76,9 @@ func (service *Service) Port() int {
 func (service *Service) Start(host string, port int) error {
 	address := fmt.Sprintf("%v:%v", host, port)
 	server := &http.Server{
-		Addr:    address,
-		Handler: service.mux,
+		Addr:              address,
+		Handler:           service.mux,
+		ReadHeaderTimeout: 2 * time.Second,
 	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
