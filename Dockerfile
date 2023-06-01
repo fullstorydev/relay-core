@@ -1,4 +1,4 @@
-FROM alpine:3.16 AS builder
+FROM alpine:3 AS builder
 RUN apk add --no-cache --update \
   alpine-sdk \
   ca-certificates \
@@ -11,7 +11,7 @@ ADD ./Makefile .
 RUN set -ex && \
 	make
 
-FROM alpine:3.16
+FROM alpine:3
 RUN apk add --no-cache --update \
   ca-certificates
 COPY --from=builder /dist /dist
