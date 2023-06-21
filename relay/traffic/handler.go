@@ -3,6 +3,7 @@ package traffic
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -137,7 +138,12 @@ func (handler *Handler) handleHttp(clientResponse http.ResponseWriter, clientReq
 	} else if targetResponse.ContentLength < 0 {
 		clientResponse.WriteHeader(targetResponse.StatusCode)
 		if _, err := io.CopyN(clientResponse, targetResponse.Body, handler.config.MaxBodySize); err != nil {
-			logger.Printf("Error relaying response body with unknown content-length: %s", err)
+			// NOTE: it is highly likely the server would come back without a content-length especially with
+			// mobile traffic. In this case, full copy happens but we get an EOF error that can be safely
+			// ignored. See this example: https://go.dev/play/p/xotsgkwhJis
+			if !errors.Is(err, io.EOF) {
+				logger.Printf("Error relaying response body with unknown content-length: %s", err)
+			}
 		}
 	} else {
 		clientResponse.WriteHeader(targetResponse.StatusCode)
