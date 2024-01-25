@@ -34,7 +34,7 @@ block-content:
   # body:
   #   - exclude: '\$[0-9]+(\.[0-9][0-9])?'  # Dollar quantities
   #   - exclude: 'EXCLUDE ME'
-  #   - mask: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'  # IP-like strings
+  #   - mask: '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'  # IP-like strings
   #   - mask: 'MASK ME'
   body:
 
@@ -42,7 +42,7 @@ block-content:
   # instead.
   # Example:
   # header:
-  #   - exclude: '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'  # IP-like strings
+  #   - exclude: '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'  # IP-like strings
   header:
 
   # You can also define block rules using environment variables.
