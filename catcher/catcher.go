@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -82,7 +81,7 @@ func (service *Service) LastRequestBody() ([]byte, error) {
 	}
 
 	defer request.Body.Close()
-	body, err := ioutil.ReadAll(request.Body)
+	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, err
 	}

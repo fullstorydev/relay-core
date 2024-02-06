@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/test-interceptor-plugin"
+	test_interceptor_plugin "github.com/fullstorydev/relay-core/relay/plugins/traffic/test-interceptor-plugin"
 	"github.com/fullstorydev/relay-core/relay/test"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 	"github.com/fullstorydev/relay-core/relay/version"
@@ -214,7 +214,7 @@ func getBody(url string, t *testing.T) []byte {
 		t.Errorf("Non-200 GET: %v", response)
 		return nil
 	}
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Errorf("Error GETing body: %v", err)
 		return nil

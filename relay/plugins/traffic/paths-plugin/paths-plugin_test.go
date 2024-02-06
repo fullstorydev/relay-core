@@ -279,7 +279,7 @@ func runPathsPluginTest(t *testing.T, testCase pathsPluginTestCase) {
 			lastRequest, err = altCatcherService.LastRequest()
 		}
 		if err != nil {
-			t.Errorf("Error reading last request from catcher: %v", err)
+			t.Errorf("Text '%v': Error reading last request from catcher: %v", testCase.desc, err)
 			return
 		}
 

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +58,19 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	request.URL.Host = handler.config.TargetHost
 	request.Host = handler.config.TargetHost
 
+	encoding, err := GetContentEncoding(request)
+	if err != nil {
+		logger.Printf("URL %v error getting request content encoding: %v", request.URL, err)
+		request.Body = http.NoBody
+		return
+	}
+
+	if err := handler.prepareRequestBody(request, encoding); err != nil {
+		http.Error(response, fmt.Sprintf("Error setting up clientRequest body reader: %s", err), 500)
+		request.Body = http.NoBody
+		return
+	}
+
 	serviced := false
 	for _, trafficPlugin := range handler.plugins {
 		if trafficPlugin.HandleRequest(response, request, RequestInfo{
@@ -68,7 +82,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		}
 	}
 
-	if handler.HandleRequest(response, request, serviced) {
+	if handler.HandleRequest(response, request, serviced, encoding) {
 		serviced = true
 	}
 
@@ -80,7 +94,17 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	}
 }
 
-func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool) bool {
+// prepareRequestBody wraps the request Body with a reader that will decode the content if necessary.
+func (handler *Handler) prepareRequestBody(clientRequest *http.Request, encoding string) error {
+	if reader, err := WrapReader(clientRequest, encoding); err != nil {
+		return err
+	} else if reader != nil && reader != http.NoBody {
+		clientRequest.Body = reader
+	}
+	return nil
+}
+
+func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool, encoding string) bool {
 	if serviced {
 		return false
 	}
@@ -90,6 +114,7 @@ func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, client
 		return true
 	}
 
+	handler.ensureBodyContentEncoding(clientRequest, encoding)
 	handler.addRelayHeaders(clientRequest)
 
 	if clientRequest.Header.Get("Upgrade") == "websocket" {
@@ -97,6 +122,38 @@ func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, client
 	} else {
 		return handler.handleHttp(clientResponse, clientRequest)
 	}
+}
+
+func (handler *Handler) ensureBodyContentEncoding(clientRequest *http.Request, encoding string) {
+	if encoding == "" || encoding == "identity" {
+		return
+	}
+
+	servicedBody, err := io.ReadAll(clientRequest.Body)
+	if err != nil {
+		logger.Printf("Error reading request body: %s", err)
+		clientRequest.Body = http.NoBody
+		return
+	}
+
+	if encodedData, err := EncodeData(servicedBody, encoding); err != nil {
+		logger.Printf("Error encoding request body: %s", err)
+		clientRequest.Body = http.NoBody
+		return
+	} else {
+		servicedBody = encodedData
+	}
+
+	// If the length of the body has changed, we should update the
+	// Content-Length header too.
+	contentLength := int64(len(servicedBody))
+	if contentLength != clientRequest.ContentLength {
+		clientRequest.ContentLength = contentLength
+		clientRequest.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	}
+
+	clientRequest.Body = io.NopCloser(bytes.NewBuffer(servicedBody))
+
 }
 
 func (handler *Handler) addRelayHeaders(clientRequest *http.Request) {
