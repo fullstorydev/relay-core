@@ -151,6 +151,108 @@ func TestMaxBodySize(t *testing.T) {
 	})
 }
 
+type Encoding int
+
+const (
+	Identity Encoding = iota
+	Gzip
+)
+
+func TestRelaySupportsContentEncoding(t *testing.T) {
+	testCases := map[string]struct {
+		encoding       Encoding
+		bodyContentStr string
+		headers        map[string]string
+		customUrl      func(relayServiceURL string) string
+	}{
+		"identity": {
+			encoding:       Identity,
+			bodyContentStr: "Hello, world!",
+		},
+		"gzip - with header": {
+			encoding:       Gzip,
+			bodyContentStr: "Hello, world!",
+			headers: map[string]string{
+				"Content-Encoding": "gzip",
+			},
+		},
+		"gzip - with query param": {
+			encoding:       Gzip,
+			bodyContentStr: "Hello, world!",
+			customUrl: func(relayServiceURL string) string {
+				return fmt.Sprintf("%v?ContentEncoding=gzip", relayServiceURL)
+			},
+		},
+	}
+
+	for desc, testCase := range testCases {
+		test.WithCatcherAndRelay(t, "", nil, func(catcherService *catcher.Service, relayService *relay.Service) {
+			// convert the body content to a reader with the proper content encoding applied
+			var body io.Reader
+			switch testCase.encoding {
+			case Gzip:
+				b, err := traffic.EncodeData([]byte(testCase.bodyContentStr), "gzip")
+				if err != nil {
+					t.Errorf("Test %s - Error encoding data: %v", desc, err)
+					return
+				}
+				body = bytes.NewReader(b)
+			case Identity:
+				body = strings.NewReader(testCase.bodyContentStr)
+			}
+
+			requestURL := relayService.HttpUrl()
+			if testCase.customUrl != nil {
+				requestURL = testCase.customUrl(requestURL)
+			}
+			request, err := http.NewRequest("POST", requestURL, body)
+			if err != nil {
+				t.Errorf("Test %s - Error GETing: %v", desc, err)
+				return
+			}
+
+			for header, headerValue := range testCase.headers {
+				request.Header.Set(header, headerValue)
+			}
+
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Errorf("Test %s - Error POSTing: %v", desc, err)
+				return
+			}
+
+			defer response.Body.Close()
+
+			if response.StatusCode != 200 {
+				t.Errorf("Test %s - Expected 200 response: %v", desc, response)
+				return
+			}
+
+			lastRequest, err := catcherService.LastRequestBody()
+			if err != nil {
+				t.Errorf("Test %s - Error reading last request body from catcher: %v", desc, err)
+				return
+			}
+
+			switch testCase.encoding {
+			case Gzip:
+				decodedData, err := traffic.DecodeData(lastRequest, "gzip")
+				if err != nil {
+					t.Errorf("Test %s - Error decoding data: %v", desc, err)
+					return
+				}
+				if string(decodedData) != testCase.bodyContentStr {
+					t.Errorf("Test %s - Expected body '%v' but got: %v", desc, testCase.bodyContentStr, string(decodedData))
+				}
+			case Identity:
+				if string(lastRequest) != testCase.bodyContentStr {
+					t.Errorf("Test %s - Expected body '%v' but got: %v", desc, testCase.bodyContentStr, string(lastRequest))
+				}
+			}
+		})
+	}
+}
+
 func TestRelayNotFound(t *testing.T) {
 	test.WithCatcherAndRelay(t, "", nil, func(catcherService *catcher.Service, relayService *relay.Service) {
 		faviconURL := fmt.Sprintf("%v/favicon.ico", relayService.HttpUrl())
