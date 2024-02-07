@@ -1,0 +1,9 @@
+services:
+  relay:
+    build:
+      context: .
+    ports:
+      - "8990:8990"
+    environment:
+      - TRAFFIC_RELAY_TARGET=https://rs.staging.fullstory.com
+      - TRAFFIC_RELAY_SPECIALS=^/s https://edge.staging.fullstory.com/s
