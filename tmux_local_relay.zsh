@@ -18,7 +18,7 @@ tmux select-layout even-horizontal
 # Start the target server to log relayed requests in the third pane
 tmux send-keys -t relay:0.2 "cd \"$current_dir\"" C-m
 tmux send-keys -t relay:0.2 "clear" C-m
-tmux send-keys -t relay:0.2 '/Users/clint/src/fsdev/tools/python/bin/python simple_http_server.py 8085' C-m
+tmux send-keys -t relay:0.2 'python simple_http_server.py 8085' C-m
 
 # Make and run the local relay server in the second pane
 tmux send-keys -t relay:0.1 "cd \"$current_dir\"" C-m
