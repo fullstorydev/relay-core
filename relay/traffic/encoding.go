@@ -3,13 +3,22 @@ package traffic
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
-func GetContentEncoding(request *http.Request) (string, error) {
+type Encoding int
+
+const (
+	Unsupported Encoding = iota
+	Identity
+	Gzip
+)
+
+func GetContentEncoding(request *http.Request) (Encoding, error) {
 	// NOTE: This is a workaround for a bug in post-Go 1.17. See golang.org/issue/25192.
 	// Our algorithm differs from the logic of AllowQuerySemicolons by replacing semicolons with encoded semicolons instead
 	// of with ampersands. This is because we want to preserve the original query string as much as possible.
@@ -19,7 +28,7 @@ func GetContentEncoding(request *http.Request) (string, error) {
 
 	queryParams, err := url.ParseQuery(request.URL.RawQuery)
 	if err != nil {
-		return "", err
+		return Unsupported, err
 	}
 
 	// request query parameter takes precedence over request header
@@ -27,29 +36,39 @@ func GetContentEncoding(request *http.Request) (string, error) {
 	if encoding == "" {
 		encoding = request.Header.Get("Content-Encoding")
 	}
-	return encoding, nil
+
+	switch encoding {
+	case "gzip":
+		return Gzip, nil
+	case "":
+		return Identity, nil
+	default:
+		return Unsupported, fmt.Errorf("unsupported encoding: %v", encoding)
+	}
 }
 
 // WrapReader checks if the request Content-Encoding or request query parameter indicates gzip compression.
 // If so, it returns a gzip.Reader that decompresses the content.
-func WrapReader(request *http.Request, encoding string) (io.ReadCloser, error) {
+func WrapReader(request *http.Request, encoding Encoding) (io.ReadCloser, error) {
 	if request.Body == nil {
 		return nil, nil
 	}
 
 	switch encoding {
-	case "gzip":
+	case Gzip:
 		// Create a new gzip.Reader to decompress the request body
 		return gzip.NewReader(request.Body)
-	default:
+	case Identity:
 		// If the content is not gzip-compressed, return the original request body
 		return request.Body, nil
+	default:
+		return nil, fmt.Errorf("unsupported encoding: %v", encoding)
 	}
 }
 
-func EncodeData(data []byte, encoding string) ([]byte, error) {
+func EncodeData(data []byte, encoding Encoding) ([]byte, error) {
 	switch encoding {
-	case "gzip":
+	case Gzip:
 		var buf bytes.Buffer
 		gz := gzip.NewWriter(&buf)
 
@@ -65,15 +84,16 @@ func EncodeData(data []byte, encoding string) ([]byte, error) {
 
 		compressedData := buf.Bytes()
 		return compressedData, nil
-	default:
-		// identity encoding
+	case Identity:
 		return data, nil
+	default:
+		return nil, fmt.Errorf("unsupported encoding: %v", encoding)
 	}
 }
 
-func DecodeData(data []byte, encoding string) ([]byte, error) {
+func DecodeData(data []byte, encoding Encoding) ([]byte, error) {
 	switch encoding {
-	case "gzip":
+	case Gzip:
 		reader, err := gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
 			return nil, err
@@ -85,8 +105,9 @@ func DecodeData(data []byte, encoding string) ([]byte, error) {
 		}
 
 		return decodedData, nil
-	default:
-		// identity encoding
+	case Identity:
 		return data, nil
+	default:
+		return nil, fmt.Errorf("unsupported encoding: %v", encoding)
 	}
 }

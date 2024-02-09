@@ -60,7 +60,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 
 	encoding, err := GetContentEncoding(request)
 	if err != nil {
-		logger.Printf("URL %v error getting request content encoding: %v", request.URL, err)
+		logger.Printf("URL %v error in request content encoding: %v", request.URL, err)
 		request.Body = http.NoBody
 		return
 	}
@@ -95,7 +95,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 }
 
 // prepareRequestBody wraps the request Body with a reader that will decode the content if necessary.
-func (handler *Handler) prepareRequestBody(clientRequest *http.Request, encoding string) error {
+func (handler *Handler) prepareRequestBody(clientRequest *http.Request, encoding Encoding) error {
 	if reader, err := WrapReader(clientRequest, encoding); err != nil {
 		return err
 	} else if reader != nil && reader != http.NoBody {
@@ -104,7 +104,7 @@ func (handler *Handler) prepareRequestBody(clientRequest *http.Request, encoding
 	return nil
 }
 
-func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool, encoding string) bool {
+func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, clientRequest *http.Request, serviced bool, encoding Encoding) bool {
 	if serviced {
 		return false
 	}
@@ -124,35 +124,39 @@ func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, client
 	}
 }
 
-func (handler *Handler) ensureBodyContentEncoding(clientRequest *http.Request, encoding string) {
-	if encoding == "" || encoding == "identity" {
+func (handler *Handler) ensureBodyContentEncoding(clientRequest *http.Request, encoding Encoding) {
+	switch encoding {
+	case Unsupported:
+		logger.Println("Error unsupported content-encoding")
 		return
-	}
-
-	servicedBody, err := io.ReadAll(clientRequest.Body)
-	if err != nil {
-		logger.Printf("Error reading request body: %s", err)
-		clientRequest.Body = http.NoBody
+	case Identity:
 		return
-	}
+	case Gzip:
+		servicedBody, err := io.ReadAll(clientRequest.Body)
+		if err != nil {
+			logger.Printf("Error reading request body: %s", err)
+			clientRequest.Body = http.NoBody
+			return
+		}
 
-	if encodedData, err := EncodeData(servicedBody, encoding); err != nil {
-		logger.Printf("Error encoding request body: %s", err)
-		clientRequest.Body = http.NoBody
-		return
-	} else {
-		servicedBody = encodedData
-	}
+		if encodedData, err := EncodeData(servicedBody, encoding); err != nil {
+			logger.Printf("Error encoding request body: %s", err)
+			clientRequest.Body = http.NoBody
+			return
+		} else {
+			servicedBody = encodedData
+		}
 
-	// If the length of the body has changed, we should update the
-	// Content-Length header too.
-	contentLength := int64(len(servicedBody))
-	if contentLength != clientRequest.ContentLength {
-		clientRequest.ContentLength = contentLength
-		clientRequest.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
-	}
+		// If the length of the body has changed, we should update the
+		// Content-Length header too.
+		contentLength := int64(len(servicedBody))
+		if contentLength != clientRequest.ContentLength {
+			clientRequest.ContentLength = contentLength
+			clientRequest.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
+		}
 
-	clientRequest.Body = io.NopCloser(bytes.NewBuffer(servicedBody))
+		clientRequest.Body = io.NopCloser(bytes.NewBuffer(servicedBody))
+	}
 
 }
 

@@ -15,13 +15,6 @@ import (
 	"github.com/fullstorydev/relay-core/relay/version"
 )
 
-type Encoding int
-
-const (
-	Identity Encoding = iota
-	Gzip
-)
-
 func TestContentBlocking(t *testing.T) {
 	testCases := []contentBlockerTestCase{
 		{
@@ -141,8 +134,8 @@ func TestContentBlocking(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		runContentBlockerTest(t, testCase, Identity)
-		runContentBlockerTest(t, testCase, Gzip)
+		runContentBlockerTest(t, testCase, traffic.Identity)
+		runContentBlockerTest(t, testCase, traffic.Gzip)
 	}
 }
 
@@ -194,12 +187,12 @@ type contentBlockerTestCase struct {
 	expectedHeaders map[string]string
 }
 
-func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase, encoding Encoding) {
+func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase, encoding traffic.Encoding) {
 	var encodingStr string
 	switch encoding {
-	case Gzip:
+	case traffic.Gzip:
 		encodingStr = "gzip"
-	case Identity:
+	case traffic.Identity:
 		encodingStr = ""
 	}
 
@@ -223,7 +216,7 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase, encodi
 	expectedHeaders[content_blocker_plugin.PluginVersionHeaderName] = version.RelayRelease
 
 	test.WithCatcherAndRelay(t, testCase.config, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
-		b, err := traffic.EncodeData([]byte(testCase.originalBody), encodingStr)
+		b, err := traffic.EncodeData([]byte(testCase.originalBody), encoding)
 		if err != nil {
 			t.Errorf("Test '%v': Error encoding data: %v", desc, err)
 			return
@@ -239,7 +232,7 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase, encodi
 			return
 		}
 
-		if encoding == Gzip {
+		if encoding == traffic.Gzip {
 			request.Header.Set("Content-Encoding", "gzip")
 		}
 
@@ -309,7 +302,7 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase, encodi
 			)
 		}
 
-		decodedRequestBody, err := traffic.DecodeData(lastRequestBody, encodingStr)
+		decodedRequestBody, err := traffic.DecodeData(lastRequestBody, encoding)
 		if err != nil {
 			t.Errorf("Test '%v': Error decoding data: %v", desc, err)
 			return
