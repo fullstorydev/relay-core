@@ -60,7 +60,7 @@ func (handler *Handler) ServeHTTP(response http.ResponseWriter, request *http.Re
 
 	encoding, err := GetContentEncoding(request)
 	if err != nil {
-		logger.Printf("URL %v error in request content encoding: %v", request.URL, err)
+		http.Error(response, fmt.Sprintf("URL %v error in request content encoding: %v", request.URL, err), 500)
 		request.Body = http.NoBody
 		return
 	}
