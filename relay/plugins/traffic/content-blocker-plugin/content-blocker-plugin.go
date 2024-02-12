@@ -25,7 +25,7 @@ package content_blocker_plugin
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -78,7 +78,7 @@ func (f contentBlockerPluginFactory) New(configSection *config.Section) (traffic
 			}
 
 			if regexp, err := regexp.Compile(pattern); err != nil {
-				return fmt.Errorf(`Could not compile regular expression "%v": %v`, pattern, err)
+				return fmt.Errorf(`could not compile regular expression "%v": %v`, pattern, err)
 			} else {
 				logger.Printf("Added rule: %s %s content matching \"%s\"", mode, contentKind, regexp)
 				blockers = append(blockers, &contentBlocker{
@@ -94,7 +94,7 @@ func (f contentBlockerPluginFactory) New(configSection *config.Section) (traffic
 		case "header":
 			plugin.headerBlockers = append(plugin.headerBlockers, blockers...)
 		default:
-			return fmt.Errorf(`Unexpected content kind %s`, contentKind)
+			return fmt.Errorf(`unexpected content kind %s`, contentKind)
 		}
 
 		return nil
@@ -222,13 +222,12 @@ func (plug contentBlockerPlugin) blockBodyContent(response http.ResponseWriter, 
 		return false
 	}
 
-	processedBody, err := ioutil.ReadAll(request.Body)
+	processedBody, err := io.ReadAll(request.Body)
 	if err != nil {
 		http.Error(response, fmt.Sprintf("Error reading request body: %s", err), 500)
 		request.Body = http.NoBody
 		return true
 	}
-	initialLength := len(processedBody)
 
 	for _, blocker := range plug.bodyBlockers {
 		processedBody = blocker.Block(processedBody)
@@ -236,14 +235,13 @@ func (plug contentBlockerPlugin) blockBodyContent(response http.ResponseWriter, 
 
 	// If the length of the body has changed, we should update the
 	// Content-Length header too.
-	finalLength := len(processedBody)
-	if finalLength != initialLength {
-		contentLength := int64(finalLength)
+	contentLength := int64(len(processedBody))
+	if contentLength != request.ContentLength {
 		request.ContentLength = contentLength
 		request.Header.Set("Content-Length", strconv.FormatInt(contentLength, 10))
 	}
 
-	request.Body = ioutil.NopCloser(bytes.NewBuffer(processedBody))
+	request.Body = io.NopCloser(bytes.NewBuffer(processedBody))
 	return false
 }
 
@@ -283,7 +281,7 @@ func (b *contentBlocker) Block(content []byte) []byte {
 	case excludeMode:
 		return b.regexp.ReplaceAllLiteral(content, []byte{})
 	default:
-		panic(fmt.Errorf("Invalid content blocking mode: %v", b.mode))
+		panic(fmt.Errorf("invalid content blocking mode: %v", b.mode))
 	}
 }
 

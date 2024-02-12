@@ -2,13 +2,14 @@ package content_blocker_plugin_test
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"strconv"
 	"testing"
 
 	"github.com/fullstorydev/relay-core/catcher"
 	"github.com/fullstorydev/relay-core/relay"
-	"github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
+	content_blocker_plugin "github.com/fullstorydev/relay-core/relay/plugins/traffic/content-blocker-plugin"
 	"github.com/fullstorydev/relay-core/relay/test"
 	"github.com/fullstorydev/relay-core/relay/traffic"
 	"github.com/fullstorydev/relay-core/relay/version"
@@ -133,7 +134,8 @@ func TestContentBlocking(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		runContentBlockerTest(t, testCase)
+		runContentBlockerTest(t, testCase, traffic.Identity)
+		runContentBlockerTest(t, testCase, traffic.Gzip)
 	}
 }
 
@@ -185,7 +187,18 @@ type contentBlockerTestCase struct {
 	expectedHeaders map[string]string
 }
 
-func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
+func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase, encoding traffic.Encoding) {
+	var encodingStr string
+	switch encoding {
+	case traffic.Gzip:
+		encodingStr = "gzip"
+	case traffic.Identity:
+		encodingStr = ""
+	}
+
+	// Add encoding to the test description
+	desc := fmt.Sprintf("%s (encoding: %v)", testCase.desc, encodingStr)
+
 	plugins := []traffic.PluginFactory{
 		content_blocker_plugin.Factory,
 	}
@@ -203,14 +216,24 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 	expectedHeaders[content_blocker_plugin.PluginVersionHeaderName] = version.RelayRelease
 
 	test.WithCatcherAndRelay(t, testCase.config, plugins, func(catcherService *catcher.Service, relayService *relay.Service) {
+		b, err := traffic.EncodeData([]byte(testCase.originalBody), encoding)
+		if err != nil {
+			t.Errorf("Test '%v': Error encoding data: %v", desc, err)
+			return
+		}
+
 		request, err := http.NewRequest(
 			"POST",
 			relayService.HttpUrl(),
-			bytes.NewBufferString(testCase.originalBody),
+			bytes.NewBuffer(b),
 		)
 		if err != nil {
-			t.Errorf("Test '%v': Error creating request: %v", testCase.desc, err)
+			t.Errorf("Test '%v': Error creating request: %v", desc, err)
 			return
+		}
+
+		if encoding == traffic.Gzip {
+			request.Header.Set("Content-Encoding", "gzip")
 		}
 
 		request.Header.Set("Content-Type", "application/json")
@@ -220,19 +243,19 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
-			t.Errorf("Test '%v': Error POSTing: %v", testCase.desc, err)
+			t.Errorf("Test '%v': Error POSTing: %v", desc, err)
 			return
 		}
 		defer response.Body.Close()
 
 		if response.StatusCode != 200 {
-			t.Errorf("Test '%v': Expected 200 response: %v", testCase.desc, response)
+			t.Errorf("Test '%v': Expected 200 response: %v", desc, response)
 			return
 		}
 
 		lastRequest, err := catcherService.LastRequest()
 		if err != nil {
-			t.Errorf("Test '%v': Error reading last request from catcher: %v", testCase.desc, err)
+			t.Errorf("Test '%v': Error reading last request from catcher: %v", desc, err)
 			return
 		}
 
@@ -241,7 +264,7 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 			if expectedHeaderValue != actualHeaderValue {
 				t.Errorf(
 					"Test '%v': Expected header '%v' with value '%v' but got: %v",
-					testCase.desc,
+					desc,
 					expectedHeader,
 					expectedHeaderValue,
 					actualHeaderValue,
@@ -249,34 +272,49 @@ func runContentBlockerTest(t *testing.T, testCase contentBlockerTestCase) {
 			}
 		}
 
-		lastRequestBody, err := catcherService.LastRequestBody()
-		if err != nil {
-			t.Errorf("Test '%v': Error reading last request body from catcher: %v", testCase.desc, err)
-			return
+		if lastRequest.Header.Get("Content-Encoding") != encodingStr {
+			t.Errorf(
+				"Test '%v': Expected Content-Encoding '%v' but got: %v",
+				desc,
+				encodingStr,
+				lastRequest.Header.Get("Content-Encoding"),
+			)
 		}
 
-		lastRequestBodyStr := string(lastRequestBody)
-		if testCase.expectedBody != lastRequestBodyStr {
-			t.Errorf(
-				"Test '%v': Expected body '%v' but got: %v",
-				testCase.desc,
-				testCase.expectedBody,
-				lastRequestBodyStr,
-			)
+		lastRequestBody, err := catcherService.LastRequestBody()
+		if err != nil {
+			t.Errorf("Test '%v': Error reading last request body from catcher: %v", desc, err)
+			return
 		}
 
 		contentLength, err := strconv.Atoi(lastRequest.Header.Get("Content-Length"))
 		if err != nil {
-			t.Errorf("Test '%v': Error parsing Content-Length: %v", testCase.desc, err)
+			t.Errorf("Test '%v': Error parsing Content-Length: %v", desc, err)
 			return
 		}
 
 		if contentLength != len(lastRequestBody) {
 			t.Errorf(
 				"Test '%v': Content-Length is %v but actual body length is %v",
-				testCase.desc,
+				desc,
 				contentLength,
 				len(lastRequestBody),
+			)
+		}
+
+		decodedRequestBody, err := traffic.DecodeData(lastRequestBody, encoding)
+		if err != nil {
+			t.Errorf("Test '%v': Error decoding data: %v", desc, err)
+			return
+		}
+
+		lastRequestBodyStr := string(decodedRequestBody)
+		if testCase.expectedBody != lastRequestBodyStr {
+			t.Errorf(
+				"Test '%v': Expected body '%v' but got: %v",
+				desc,
+				testCase.expectedBody,
+				lastRequestBodyStr,
 			)
 		}
 	})

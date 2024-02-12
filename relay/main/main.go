@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -10,14 +10,14 @@ import (
 	"github.com/fullstorydev/relay-core/relay"
 	"github.com/fullstorydev/relay-core/relay/config"
 	"github.com/fullstorydev/relay-core/relay/environment"
-	"github.com/fullstorydev/relay-core/relay/traffic/plugin-loader"
+	plugin_loader "github.com/fullstorydev/relay-core/relay/traffic/plugin-loader"
 )
 
 var logger = log.New(os.Stdout, "[relay] ", 0)
 
 func readConfigFile(path string) (rawConfigFileBytes []byte, err error) {
 	if path == "-" {
-		rawConfigFileBytes, err = ioutil.ReadAll(os.Stdin)
+		rawConfigFileBytes, err = io.ReadAll(os.Stdin)
 		return
 	}
 
