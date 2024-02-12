@@ -47,8 +47,7 @@ func GetContentEncoding(request *http.Request) (Encoding, error) {
 	}
 }
 
-// WrapReader checks if the request Content-Encoding or request query parameter indicates gzip compression.
-// If so, it returns a gzip.Reader that decompresses the content.
+// WrapReader returns a wrapped request.Body for the encoding provided.
 func WrapReader(request *http.Request, encoding Encoding) (io.ReadCloser, error) {
 	if request.Body == nil {
 		return nil, nil

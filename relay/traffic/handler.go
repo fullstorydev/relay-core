@@ -124,6 +124,8 @@ func (handler *Handler) HandleRequest(clientResponse http.ResponseWriter, client
 	}
 }
 
+// ensureBodyContentEncoding operates on the assumption that the downstream proxy target will be using the same
+// encoding as what the relay received and ensures we proxy the content encoded correctly.
 func (handler *Handler) ensureBodyContentEncoding(clientRequest *http.Request, encoding Encoding) {
 	switch encoding {
 	case Unsupported:
