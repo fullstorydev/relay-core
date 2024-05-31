@@ -1,6 +1,6 @@
 module github.com/fullstorydev/relay-core
 
-go 1.20
+go 1.22.3
 
 require (
 	golang.org/x/net v0.23.0

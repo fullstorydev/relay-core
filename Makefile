@@ -7,6 +7,7 @@ export RELAY_MODULE := github.com/fullstorydev/relay-core
 all: compile
 
 compile:
+	go version
 	go build -o $(DIST_PATH)/relay $(RELAY_MODULE)/relay/main
 	go build -o $(DIST_PATH)/catcher $(RELAY_MODULE)/catcher/main
 
