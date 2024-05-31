@@ -3,6 +3,7 @@ RUN apk add --no-cache --update \
   alpine-sdk \
   ca-certificates \
   go
+WORKDIR /relay
 ADD ./catcher ./catcher
 ADD ./relay ./relay
 ADD ./go.mod .
@@ -14,7 +15,7 @@ RUN set -ex && \
 FROM alpine:3.19
 RUN apk add --no-cache --update \
   ca-certificates
-COPY --from=builder /dist /dist
+COPY --from=builder /relay/dist /dist
 COPY relay.yaml /etc/relay/relay.yaml
 ENTRYPOINT [ "/dist/relay" ]
 CMD [ "--config", "/etc/relay/relay.yaml" ]

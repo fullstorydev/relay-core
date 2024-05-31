@@ -1,3 +1,3 @@
 package version
 
-const RelayRelease = "v0.4.0" // TODO set this from tags automatically during git commit
+const RelayRelease = "v0.4.1" // TODO set this from tags automatically during git commit
